@@ -1,6 +1,24 @@
 # wechat-rs
 
-A high-performance WeChat Official Account backend service written in Rust.
+A high-performance WeChat Official Account backend service written in Rust, providing webhook handling, verification code generation, and a full-featured admin dashboard.
+
+## Quick Start
+
+```bash
+# 1. Clone and configure
+git clone <repository-url>
+cd wechat_sever
+cp config.toml.example config.toml
+# Edit config.toml with your database URL, admin password, and WeChat credentials
+
+# 2. Run with Docker
+docker-compose up -d
+
+# 3. Access admin UI
+# Open http://localhost:3317/admin/
+```
+
+The default admin password is set in `config.toml` under `[admin] password`. After first login, it's hashed with bcrypt and stored in the database.
 
 ## Features
 
@@ -21,8 +39,14 @@ A high-performance WeChat Official Account backend service written in Rust.
 
 ```
 src/
-├── main.rs              # Application entry point, routing, core handlers
-├── admin.rs             # Admin API and web UI
+├── main.rs              # Application entry point, config loading, routing
+├── api.rs               # Public API endpoints (verification code validation)
+├── crypto.rs            # WeChat AES encryption and signature verification
+├── wechat.rs            # WeChat webhook handlers and message processing
+├── admin/
+│   ├── mod.rs           # Admin module entry, JWT authentication, routing
+│   ├── handlers.rs      # Admin API handlers (login, config, stats, etc.)
+│   └── ui.rs            # Admin web UI (embedded HTML/CSS/JS)
 └── storage/
     ├── mod.rs           # Storage trait definition
     ├── postgres.rs      # PostgreSQL implementation
@@ -55,8 +79,12 @@ The binary will be at `target/release/wechat-rs`.
 ### Docker Deployment
 
 ```bash
-# Build and start
-docker-compose up -d --build
+# 1. Create config file
+cp config.toml.example config.toml
+# Edit config.toml with your actual values
+
+# 2. Start (pulls image from DockerHub automatically)
+docker-compose up -d
 
 # View logs
 docker-compose logs -f
@@ -65,45 +93,71 @@ docker-compose logs -f
 docker-compose down
 ```
 
-## Configuration
+### Building and Publishing Docker Images
 
-Environment variables (via `.env` file or system environment):
-
-### Required
+When updating the service, rebuild and push the Docker image:
 
 ```bash
-# Storage backend: "postgres" or "redis"
-STORAGE_TYPE=postgres
+# Build the Rust binary
+cargo build --release
 
-# For PostgreSQL
-DATABASE_URL=postgres://user:password@host:5432/dbname
+# Rebuild and restart the container
+docker-compose down
+docker-compose up -d --build
 
-# For Redis
-REDIS_URL=redis://host:6379
-
-# Admin credentials
-ADMIN_PASSWORD=your-secure-password
-ADMIN_SECRET=your-jwt-secret-at-least-32-chars
-
-# WeChat Official Account credentials
-WECHAT_TOKEN=your-wechat-token
-WECHAT_APPID=your-appid
-WECHAT_APPSECRET=your-appsecret
-WECHAT_ENCODING_AES_KEY=your-43-character-key
+# Tag and push to DockerHub
+docker tag wechat-sever:latest davepaine/wechat-rs:latest
+docker push davepaine/wechat-rs:latest
 ```
 
-### Optional
+The Docker image is available at: https://hub.docker.com/r/davepaine/wechat-rs
+
+## Configuration
+
+Configuration is managed via a TOML file (`config.toml`). Copy `config.toml.example` as a starting point:
 
 ```bash
-# Service configuration
-LISTEN_ADDR=0.0.0.0:3000
-SITE_NAME=微信服务管理后台
-DOMAIN=your-domain.com
+cp config.toml.example config.toml
+# Edit config.toml with your actual values
+```
 
-# Upstream API token (for /api/wechat/user endpoint)
-WECHAT_SERVER_TOKEN=your-upstream-token
+The config file path defaults to `./config.toml`, and can be overridden with the `CONFIG_PATH` environment variable.
 
-# Logging
+### Configuration File Structure
+
+```toml
+[server]
+listen_addr = "0.0.0.0:3000"
+site_name   = "微信服务管理后台"
+domain      = "localhost"
+
+[admin]
+password = "admin123"                              # Initial login password (bcrypt hashed on first login)
+secret   = "please_change_this_to_a_long_random_string"  # JWT signing secret
+
+[wechat]
+token            = ""
+appid            = ""
+appsecret        = ""
+encoding_aes_key = ""
+
+[upstream]
+server_token = ""    # For /api/wechat/user endpoint
+
+[storage]
+type         = "postgres"    # or "redis"
+database_url = "postgres://user:password@host:5432/dbname"
+# redis_url  = "redis://localhost:6379"
+```
+
+### Admin UI Sync
+
+WeChat credentials, site name, and domain can also be edited via the admin web UI (`/admin`). Changes are saved to both the database and the `config.toml` file, keeping them in sync.
+
+### Logging
+
+Set the `RUST_LOG` environment variable to control log verbosity:
+```bash
 RUST_LOG=wechat_rs=info,tower_http=debug
 ```
 
@@ -313,16 +367,20 @@ Create WeChat custom menu (requires valid AppID and AppSecret).
 
 Access the admin dashboard at:
 ```
-http://your-domain:3000/admin/
+http://your-domain:3317/admin/
 ```
 
 Features:
-- Dashboard with real-time statistics
-- User management with search
-- Verification code audit logs
-- Site configuration
-- System health monitoring
-- Password management
+- **Dashboard**: Real-time statistics (subscribers, verification codes, daily metrics)
+- **WeChat Configuration**: Token, AppID, AppSecret, EncodingAESKey management with live validation
+- **User Management**: Search and view subscriber list with verification history
+- **Verification Logs**: Audit trail of all generated codes with status tracking
+- **Security Settings**: Password management and WeChat server verification testing
+- **System Health**: Memory usage, database connections, uptime monitoring
+
+**Configuration Sync**: Changes made in the admin UI are automatically saved to both the database and `config.toml` file, keeping them in sync. This ensures configuration persists across restarts and can be version-controlled.
+
+**Verification Test**: The "发送验证请求" button in the Security Settings page computes the correct SHA1 signature client-side using your configured token, providing a real end-to-end test of the WeChat verification endpoint.
 
 ## Storage Backends
 
@@ -364,11 +422,9 @@ Features:
 ### Run Locally
 
 ```bash
-# Set environment variables
-export DATABASE_URL=postgres://localhost:5432/wechat
-export ADMIN_PASSWORD=dev-password
-export ADMIN_SECRET=dev-secret-min-32-chars
-export WECHAT_TOKEN=dev-token
+# Create config file
+cp config.toml.example config.toml
+# Edit config.toml (set storage.database_url, admin.secret, etc.)
 
 # Run with debug logging
 RUST_LOG=debug cargo run
@@ -404,12 +460,13 @@ For Redis, no setup required.
 server {
     listen 80;
     server_name your-domain.com;
-    
+
     location / {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://127.0.0.1:3317;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
 ```
@@ -423,10 +480,15 @@ certbot --nginx -d your-domain.com
 
 ### Firewall
 
-Open port 80/443 for WeChat callbacks:
+The Docker container maps host port **3317** to container port 3000. If using Nginx reverse proxy, open ports 80/443:
 ```bash
 ufw allow 80/tcp
 ufw allow 443/tcp
+```
+
+If accessing directly without a reverse proxy:
+```bash
+ufw allow 3317/tcp
 ```
 
 ## License

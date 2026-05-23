@@ -10,7 +10,7 @@ use bcrypt::{hash, DEFAULT_COST};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use crate::{AppState, PageParams, save_config, storage};
+use crate::{AppState, PageParams, save_config, write_back_toml, storage};
 use storage::CodeInfo;
 use super::{make_token, mask, auth, verify as bcrypt_verify};
 
@@ -82,8 +82,7 @@ pub async fn login(
     let hash_stored = state.config.read().await.admin_password_hash.clone();
 
     let ok = if hash_stored.is_empty() {
-        let plain = std::env::var("ADMIN_PASSWORD").unwrap_or_default();
-        body.password == plain
+        body.password == state.admin_password
     } else {
         bcrypt_verify(&body.password, &hash_stored).unwrap_or(false)
     };
@@ -127,19 +126,23 @@ pub async fn update_config(
 ) -> impl IntoResponse {
     auth!(state, headers);
     let mut cfg = state.config.write().await;
-    if let Some(v) = body.wechat_token    { cfg.wechat_token = v; }
-    if let Some(v) = body.wechat_appid   { cfg.wechat_appid = v; }
-    if let Some(v) = body.wechat_appsecret { cfg.wechat_appsecret = v; }
-    if let Some(v) = body.wechat_encoding_aes_key { cfg.wechat_encoding_aes_key = v; }
+    if let Some(v) = body.wechat_token    { cfg.wechat_token = v.trim().to_string(); }
+    if let Some(v) = body.wechat_appid   { cfg.wechat_appid = v.trim().to_string(); }
+    if let Some(v) = body.wechat_appsecret { cfg.wechat_appsecret = v.trim().to_string(); }
+    if let Some(v) = body.wechat_encoding_aes_key { cfg.wechat_encoding_aes_key = v.trim().to_string(); }
     if let Some(v) = body.welcome_message { cfg.welcome_message = v; }
-    if let Some(v) = body.site_name { cfg.site_name = v; }
-    if let Some(v) = body.domain { cfg.domain = v; }
+    if let Some(v) = body.site_name { cfg.site_name = v.trim().to_string(); }
+    if let Some(v) = body.domain { cfg.domain = v.trim().to_string(); }
     if let Some(pw) = body.new_password {
         if !pw.is_empty() { cfg.admin_password_hash = hash(&pw, DEFAULT_COST).unwrap(); }
     }
     if let Err(e) = save_config(&*state.db, &cfg).await {
         tracing::error!("save config: {e}");
         return (StatusCode::INTERNAL_SERVER_ERROR, "db error").into_response();
+    }
+    // 同步写回 TOML 配置文件
+    if let Err(e) = write_back_toml(&state.config_path, &cfg) {
+        tracing::error!("write back toml: {e}");
     }
     Json(serde_json::json!({"ok": true})).into_response()
 }

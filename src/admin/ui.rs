@@ -819,30 +819,43 @@ async function changePw() {
   else toast('更新失败', 'err');
 }
 
+async function sha1hex(str) {
+  const buf = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 async function testVerification() {
   const resultDiv = document.getElementById('verify-result');
   const pre = resultDiv.querySelector('pre');
   resultDiv.style.display = 'block';
-  pre.textContent = '正在发送验证请求...';
-  
-  const timestamp = Math.floor(Date.now() / 1000).toString();
-  const nonce = 'test_nonce_' + Math.random().toString(36).substring(7);
-  const echostr = 'test_echostr_' + Date.now();
-  
+  pre.textContent = '正在获取 Token 并计算签名...';
+
   try {
-    const url = `${BASE}/wx?timestamp=${timestamp}&nonce=${nonce}&echostr=${echostr}&signature=test`;
+    const cfg = await apiFetch('/admin/config');
+    if (!cfg || !cfg.wechat_token) {
+      pre.textContent = '✗ 请先在「微信配置」中保存 Token';
+      toast('请先配置 Token', 'err');
+      return;
+    }
+
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const nonce = 'test_nonce_' + Math.random().toString(36).substring(7);
+    const echostr = 'test_echostr_' + Date.now();
+    const signature = await sha1hex([cfg.wechat_token, timestamp, nonce].sort().join(''));
+
+    const url = `${BASE}/wx?timestamp=${timestamp}&nonce=${nonce}&echostr=${echostr}&signature=${signature}`;
     const r = await fetch(url);
     const status = r.status;
     const text = await r.text();
-    
-    pre.textContent = `状态码: ${status}\n响应: ${text}\n\n请求参数:\n  timestamp: ${timestamp}\n  nonce: ${nonce}\n  echostr: ${echostr}\n  signature: test\n\n`;
-    
+
+    pre.textContent = `状态码: ${status}\n响应: ${text}\n\n请求参数:\n  timestamp: ${timestamp}\n  nonce: ${nonce}\n  echostr: ${echostr}\n  signature: ${signature}\n  (SHA1 of sorted: token + timestamp + nonce)\n\n`;
+
     if (status === 200 && text === echostr) {
-      pre.textContent += '✓ 验证成功！接口正常工作。';
+      pre.textContent += '✓ 验证成功！签名匹配，echostr 已正确回传。';
       toast('验证成功', 'ok');
     } else if (status === 403) {
-      pre.textContent += '✗ 验证失败：签名不匹配。这是正常的，因为使用了测试签名。\n\n要真正验证，请在微信公众平台配置正确的 Token，并使用微信的验证工具。';
-      toast('接口已响应（签名测试）', 'ok');
+      pre.textContent += '✗ 验证失败：签名不匹配，请检查 Token 配置。';
+      toast('验证失败', 'err');
     } else {
       pre.textContent += `✗ 未预期的响应`;
       toast('验证失败', 'err');

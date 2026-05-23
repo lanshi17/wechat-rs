@@ -57,16 +57,16 @@ pub async fn verify(
     Query(p): Query<VerifyParams>,
 ) -> impl IntoResponse {
     let cfg = state.config.read().await;
-    let token = &cfg.wechat_token;
-    let aes_key = &cfg.wechat_encoding_aes_key;
+    let token = cfg.wechat_token.trim().to_string();
+    let aes_key = cfg.wechat_encoding_aes_key.trim().to_string();
 
     if let (Some(encrypt), Some(msg_sig)) = (&p.encrypt, &p.msg_signature) {
-        let expected = make_safe_signature(token, &p.timestamp, &p.nonce, encrypt);
+        let expected = make_safe_signature(&token, &p.timestamp, &p.nonce, encrypt);
         if expected != *msg_sig {
             tracing::warn!("safe mode verify: signature mismatch");
             return (StatusCode::FORBIDDEN, "signature mismatch").into_response();
         }
-        match wx_decrypt(encrypt, aes_key) {
+        match wx_decrypt(encrypt, &aes_key) {
             Ok(decrypted) => return decrypted.into_response(),
             Err(e) => {
                 tracing::error!("safe mode verify decrypt error: {e}");
@@ -75,7 +75,7 @@ pub async fn verify(
         }
     }
 
-    if check_signature(token, &p.timestamp, &p.nonce, &p.signature) {
+    if check_signature(&token, &p.timestamp, &p.nonce, &p.signature) {
         p.echostr.into_response()
     } else {
         (StatusCode::FORBIDDEN, "forbidden").into_response()
@@ -88,9 +88,9 @@ pub async fn webhook(
     body: String,
 ) -> impl IntoResponse {
     let cfg = state.config.read().await;
-    let aes_key = cfg.wechat_encoding_aes_key.clone();
-    let appid = cfg.wechat_appid.clone();
-    let token = cfg.wechat_token.clone();
+    let aes_key = cfg.wechat_encoding_aes_key.trim().to_string();
+    let appid = cfg.wechat_appid.trim().to_string();
+    let token = cfg.wechat_token.trim().to_string();
     drop(cfg);
 
     let xml_to_parse = if aes_key.len() == 43 {

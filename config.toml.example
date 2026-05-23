@@ -1,0 +1,35 @@
+# ── 服务 ──────────────────────────────────────────────────────────────────────
+[server]
+listen_addr = "0.0.0.0:3000"
+site_name   = "微信服务管理后台"
+domain      = "localhost"
+
+# ── 管理后台 ──────────────────────────────────────────────────────────────────
+[admin]
+# 首次登录密码（登录成功后自动 bcrypt 写入数据库，之后此字段可留空）
+password = "admin123"
+# JWT 签名密钥（随机字符串，越长越好）
+secret   = "please_change_this_to_a_long_random_string"
+
+# ── 微信（可在管理后台动态配置，此处作为初始值）────────────────────────────────
+[wechat]
+token            = ""
+appid            = ""
+appsecret        = ""
+encoding_aes_key = ""
+
+# ── 上游网站 API 访问令牌 ────────────────────────────────────────────────────
+[upstream]
+server_token = ""
+
+# ── 存储后端 ──────────────────────────────────────────────────────────────────
+[storage]
+# 可选: postgres / redis
+type = "postgres"
+
+# PostgreSQL 连接（type = "postgres" 时必填）
+# 注意: 密码中的特殊字符需 URL 编码
+database_url = "postgres://wechat:your_password_here@localhost:5432/wechat"
+
+# Redis 连接（type = "redis" 时必填）
+# redis_url = "redis://localhost:6379"

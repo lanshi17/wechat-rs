@@ -1,5 +1,5 @@
 /target/
-.env
+config.toml
 *.swp
 *.swo
 *~
