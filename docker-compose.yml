@@ -1,0 +1,29 @@
+# 部署说明：
+# 1. 复制 .env.example 为 .env，填入实际配置
+# 2. docker-compose up -d --build
+
+services:
+  app:
+    build: .
+    image: wechat-sever:latest
+    container_name: wechat-sever
+    restart: unless-stopped
+    ports:
+      - "${LISTEN_PORT:-3317}:3000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL:           ${DATABASE_URL}
+      ADMIN_SECRET:           ${ADMIN_SECRET}
+      ADMIN_PASSWORD:         ${ADMIN_PASSWORD}
+      WECHAT_TOKEN:           ${WECHAT_TOKEN}
+      WECHAT_APPID:           ${WECHAT_APPID:-}
+      WECHAT_APPSECRET:       ${WECHAT_APPSECRET:-}
+      WECHAT_ENCODING_AES_KEY: ${WECHAT_ENCODING_AES_KEY:-}
+      WECHAT_SERVER_TOKEN:     ${WECHAT_SERVER_TOKEN:-}
+      STORAGE_TYPE:           ${STORAGE_TYPE:-postgres}
+      REDIS_URL:              ${REDIS_URL:-}
+      SITE_NAME:              ${SITE_NAME:-微信服务管理后台}
+      DOMAIN:                 ${DOMAIN:-localhost}
+      LISTEN_ADDR:            0.0.0.0:3000
+      RUST_LOG:               ${RUST_LOG:-wechat_rs=info,tower_http=debug}
