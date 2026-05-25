@@ -1,129 +1,91 @@
-# wechat-rs
+<p align="center">
+  <h1 align="center">wechat-rs</h1>
+  <p align="center">
+    <strong>A high-performance WeChat Official Account backend service built with Rust</strong>
+  </p>
+  <p align="center">
+    <a href="https://github.com/lanshi17/wechat-rs/actions/workflows/rust.yml">
+      <img src="https://github.com/lanshi17/wechat-rs/actions/workflows/rust.yml/badge.svg" alt="Build">
+    </a>
+    <a href="https://hub.docker.com/r/davepaine/wechat-rs">
+      <img src="https://img.shields.io/docker/pulls/davepaine/wechat-rs" alt="Docker Pulls">
+    </a>
+    <a href="https://github.com/lanshi17/wechat-rs/blob/main/LICENSE">
+      <img src="https://img.shields.io/github/license/lanshi17/wechat-rs" alt="License">
+    </a>
+    <a href="https://github.com/lanshi17/wechat-rs">
+      <img src="https://img.shields.io/github/stars/lanshi17/wechat-rs?style=social" alt="Stars">
+    </a>
+  </p>
+</p>
 
-A high-performance WeChat Official Account backend service written in Rust, providing webhook handling, verification code generation, and a full-featured admin dashboard.
+---
+
+## Why wechat-rs?
+
+Building a WeChat Official Account backend usually means stitching together Python or Node.js scripts, wrestling with XML parsing, and managing fragile integrations. **wechat-rs gives you a production-ready backend in a single binary.**
+
+- 🚀 **Deploy in 30 seconds** — one `docker-compose up` and you're live
+- ⚡ **Rust-powered performance** — Axum + Tokio async runtime, minimal memory footprint
+- 🛡️ **Production security built-in** — JWT auth, bcrypt password hashing, AES-encrypted WeChat messages
+- 🎛️ **Full admin dashboard** — real-time stats, user management, config sync, no extra tooling needed
+- 🔌 **Pluggable storage** — PostgreSQL or Redis, switch with a single config line
 
 ## Quick Start
 
 ```bash
-# 1. Clone and configure
-git clone <repository-url>
-cd wechat_sever
+# Clone and configure
+git clone https://github.com/lanshi17/wechat-rs.git
+cd wechat-rs
 cp config.toml.example config.toml
 # Edit config.toml with your database URL, admin password, and WeChat credentials
 
-# 2. Run with Docker
+# Run with Docker (pulls image automatically)
 docker-compose up -d
 
-# 3. Access admin UI
-# Open http://localhost:3317/admin/
+# Open admin dashboard
+# → http://localhost:3317/admin/
 ```
 
-The default admin password is set in `config.toml` under `[admin] password`. After first login, it's hashed with bcrypt and stored in the database.
+That's it. PostgreSQL tables are created automatically on first startup.
+
+> **Tip:** Set your admin password in `config.toml` under `[admin] password`. It's hashed with bcrypt on first login.
 
 ## Features
 
-- **WeChat Message Processing**: Handle subscribe/unsubscribe events, text messages, and menu clicks
-- **Verification Code System**: Generate and validate 6-digit codes with 3-minute expiration
-- **Admin Dashboard**: Web-based management interface with:
-  - Real-time statistics and monitoring
-  - User management with search functionality
-  - Verification code audit logs
-  - Site customization (name, domain)
-  - System health monitoring
-  - Password management
-- **Flexible Storage**: Support for PostgreSQL and Redis backends
-- **Security**: JWT authentication, AES encryption for WeChat messages
-- **Performance**: Built with Tokio async runtime, optimized for high concurrency
+| Feature | Details |
+|---------|---------|
+| **WeChat Messaging** | Subscribe/unsubscribe events, text messages, menu clicks |
+| **Verification Codes** | 6-digit codes with 3-minute TTL, validation API |
+| **Admin Dashboard** | Real-time stats, user search, code audit logs, health monitoring |
+| **Config Sync** | Edit WeChat credentials via UI — auto-synced to `config.toml` |
+| **Storage** | PostgreSQL and Redis backends via trait-based abstraction |
+| **Security** | JWT auth, AES encryption, SHA1 signature verification |
+| **Deployment** | Single binary or Docker image, Nginx reverse proxy ready |
 
 ## Architecture
 
 ```
 src/
-├── main.rs              # Application entry point, config loading, routing
-├── api.rs               # Public API endpoints (verification code validation)
-├── crypto.rs            # WeChat AES encryption and signature verification
-├── wechat.rs            # WeChat webhook handlers and message processing
+├── main.rs              # Entry point, config loading, routing
+├── api.rs               # Public API (verification code validation)
+├── crypto.rs            # AES encryption and signature verification
+├── wechat.rs            # Webhook handlers and message processing
 ├── admin/
-│   ├── mod.rs           # Admin module entry, JWT authentication, routing
-│   ├── handlers.rs      # Admin API handlers (login, config, stats, etc.)
-│   └── ui.rs            # Admin web UI (embedded HTML/CSS/JS)
+│   ├── mod.rs           # JWT authentication and routing
+│   ├── handlers.rs      # Admin API handlers
+│   └── ui.rs            # Embedded admin web UI
 └── storage/
     ├── mod.rs           # Storage trait definition
     ├── postgres.rs      # PostgreSQL implementation
     └── redis_store.rs   # Redis implementation
 ```
 
-### Storage Abstraction
-
-The service uses a trait-based storage abstraction (`Storage` trait) that allows switching between PostgreSQL and Redis without changing business logic:
-
-- **PostgreSQL**: Full-featured relational storage with SQL queries
-- **Redis**: In-memory storage with sorted sets and hash maps
-
-## Installation
-
-### Prerequisites
-
-- Rust 1.75+ (for building from source)
-- PostgreSQL 12+ or Redis 6+
-- Docker & Docker Compose (recommended for deployment)
-
-### Build from Source
-
-```bash
-cargo build --release
-```
-
-The binary will be at `target/release/wechat-rs`.
-
-### Docker Deployment
-
-```bash
-# 1. Create config file
-cp config.toml.example config.toml
-# Edit config.toml with your actual values
-
-# 2. Start (pulls image from DockerHub automatically)
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-
-# Stop
-docker-compose down
-```
-
-### Building and Publishing Docker Images
-
-When updating the service, rebuild and push the Docker image:
-
-```bash
-# Build the Rust binary
-cargo build --release
-
-# Rebuild and restart the container
-docker-compose down
-docker-compose up -d --build
-
-# Tag and push to DockerHub
-docker tag wechat-sever:latest davepaine/wechat-rs:latest
-docker push davepaine/wechat-rs:latest
-```
-
-The Docker image is available at: https://hub.docker.com/r/davepaine/wechat-rs
+**Storage backends** are interchangeable via the `Storage` trait — switch between PostgreSQL (full SQL, ACID) and Redis (in-memory, auto-TTL) without touching business logic.
 
 ## Configuration
 
-Configuration is managed via a TOML file (`config.toml`). Copy `config.toml.example` as a starting point:
-
-```bash
-cp config.toml.example config.toml
-# Edit config.toml with your actual values
-```
-
-The config file path defaults to `./config.toml`, and can be overridden with the `CONFIG_PATH` environment variable.
-
-### Configuration File Structure
+Copy `config.toml.example` and fill in your values:
 
 ```toml
 [server]
@@ -132,7 +94,7 @@ site_name   = "微信服务管理后台"
 domain      = "localhost"
 
 [admin]
-password = "admin123"                              # Initial login password (bcrypt hashed on first login)
+password = "admin123"                              # Bcrypt hashed on first login
 secret   = "please_change_this_to_a_long_random_string"  # JWT signing secret
 
 [wechat]
@@ -150,55 +112,26 @@ database_url = "postgres://user:password@host:5432/dbname"
 # redis_url  = "redis://localhost:6379"
 ```
 
+Config path defaults to `./config.toml`. Override with `CONFIG_PATH` env var.
+
 ### Admin UI Sync
 
-WeChat credentials, site name, and domain can also be edited via the admin web UI (`/admin`). Changes are saved to both the database and the `config.toml` file, keeping them in sync.
+WeChat credentials, site name, and domain can be edited via the admin UI (`/admin`). Changes sync to both the database and `config.toml`.
 
-### Logging
-
-Set the `RUST_LOG` environment variable to control log verbosity:
-```bash
-RUST_LOG=wechat_rs=info,tower_http=debug
-```
-
-## API Endpoints
+## API Reference
 
 ### Public Endpoints
 
-#### `GET /wx`
-WeChat server verification endpoint.
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/wx` | WeChat server verification (signature, echostr) |
+| `POST` | `/wx` | WeChat webhook — messages and events |
+| `GET` | `/api/wechat/user?code=XXXXXX` | Validate verification code → returns OpenID |
 
-**Query Parameters:**
-- `signature`, `timestamp`, `nonce`, `echostr` (standard WeChat verification)
-- `msg_signature`, `encrypt` (for encrypted mode)
+**Supported events:** `subscribe`, `unsubscribe`, `CLICK`
+**Supported messages:** `text` (commands: "验证码", "verify", "code")
 
-**Response:** `echostr` on success
-
-#### `POST /wx`
-WeChat webhook for receiving messages and events.
-
-**Request Body:** XML message from WeChat
-
-**Supported Events:**
-- `subscribe`: Record user subscription
-- `unsubscribe`: Mark user as unsubscribed
-- `CLICK`: Handle menu clicks (e.g., `GET_VERIFY_CODE`)
-
-**Supported Messages:**
-- `text`: Process text commands (e.g., "验证码", "verify", "code")
-
-**Response:** XML reply (encrypted if AES key configured)
-
-#### `GET /api/wechat/user?code=XXXXXX`
-Validate verification code and return associated OpenID.
-
-**Headers:**
-- `Authorization: <WECHAT_SERVER_TOKEN>` or `Bearer <WECHAT_SERVER_TOKEN>`
-
-**Query Parameters:**
-- `code`: 6-digit verification code
-
-**Response:**
+**Code validation response:**
 ```json
 {
   "success": true,
@@ -209,250 +142,71 @@ Validate verification code and return associated OpenID.
 
 ### Admin API
 
-All admin endpoints require JWT authentication.
+All admin endpoints require JWT (`Authorization: Bearer <token>`).
 
-#### `POST /admin/login`
-Authenticate and receive JWT token.
-
-**Request Body:**
-```json
-{
-  "password": "your-admin-password"
-}
-```
-
-**Response:**
-```json
-{
-  "token": "eyJhbGciOiJIUzI1NiIs..."
-}
-```
-
-Use the token in subsequent requests:
-```bash
-Authorization: Bearer <token>
-```
-
-#### `GET /admin/stats`
-Basic statistics.
-
-**Response:**
-```json
-{
-  "total_subscribers": 1234
-}
-```
-
-#### `GET /admin/stats/detailed`
-Detailed statistics.
-
-**Response:**
-```json
-{
-  "total_subscribers": 1234,
-  "total_users": 1500,
-  "today_new_users": 42,
-  "today_codes": 156,
-  "used_codes": 890,
-  "expired_codes": 234,
-  "total_codes": 5678
-}
-```
-
-#### `GET /admin/health`
-System health check.
-
-**Response:**
-```json
-{
-  "uptime_seconds": 3600,
-  "memory_total_mb": 4096,
-  "memory_used_mb": 2048,
-  "db_connected": true,
-  "db_connections": 5
-}
-```
-
-#### `GET /admin/users?page=1&size=20`
-List subscribed users with pagination.
-
-**Response:**
-```json
-[
-  {
-    "openid": "oXXXXXXXXXXXXXXXXXXXXXXXXX",
-    "nickname": "User Name",
-    "headimgurl": "https://...",
-    "subscribe": true,
-    "created_at": "2026-05-23T10:00:00Z",
-    "updated_at": "2026-05-23T12:00:00Z"
-  }
-]
-```
-
-#### `GET /admin/users/search?q=XXX`
-Search users by OpenID (partial match).
-
-#### `GET /admin/users/:openid/codes`
-Get verification code history for a specific user.
-
-#### `GET /admin/codes?page=1&size=20`
-List all verification codes with pagination.
-
-**Response:**
-```json
-{
-  "codes": [
-    {
-      "id": 123,
-      "openid": "oXXXXXXXXXXXXXXXXXXXXXXXXX",
-      "code": "123456",
-      "purpose": "",
-      "used": false,
-      "created_at": "2026-05-23T10:00:00Z",
-      "expires_at": "2026-05-23T10:03:00Z"
-    }
-  ],
-  "total": 5678
-}
-```
-
-#### `GET /admin/config`
-Get current configuration (sensitive fields masked).
-
-**Response:**
-```json
-{
-  "wechat_token": "your-token",
-  "wechat_appid": "wx1234567890",
-  "wechat_appsecret_masked": "abc1****",
-  "wechat_encoding_aes_key": "abcd****",
-  "welcome_message": "感谢关注！",
-  "site_name": "微信服务管理后台",
-  "domain": "your-domain.com",
-  "has_password": true
-}
-```
-
-#### `PUT /admin/config`
-Update configuration.
-
-**Request Body:**
-```json
-{
-  "wechat_token": "new-token",
-  "wechat_appid": "new-appid",
-  "wechat_appsecret": "new-secret",
-  "welcome_message": "新的欢迎语",
-  "site_name": "新站点名称",
-  "domain": "new-domain.com",
-  "new_password": "new-admin-password"
-}
-```
-
-All fields are optional. Only provided fields will be updated.
-
-#### `POST /admin/menu/create`
-Create WeChat custom menu (requires valid AppID and AppSecret).
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "菜单创建成功"
-}
-```
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/admin/login` | Authenticate, receive JWT token |
+| `GET` | `/admin/stats` | Basic subscriber statistics |
+| `GET` | `/admin/stats/detailed` | Detailed metrics (daily users, codes, etc.) |
+| `GET` | `/admin/health` | System health (memory, DB connections, uptime) |
+| `GET` | `/admin/users` | Paginated user list (`?page=1&size=20`) |
+| `GET` | `/admin/users/search` | Search users by OpenID (`?q=xxx`) |
+| `GET` | `/admin/users/:openid/codes` | Verification history for a user |
+| `GET` | `/admin/codes` | Paginated verification code list |
+| `GET` | `/admin/config` | Current config (sensitive fields masked) |
+| `PUT` | `/admin/config` | Update config fields |
+| `POST` | `/admin/menu/create` | Create WeChat custom menu |
 
 ### Admin Web UI
 
-Access the admin dashboard at:
-```
-http://your-domain:3317/admin/
-```
+Access at `http://your-domain:3317/admin/`
 
-Features:
-- **Dashboard**: Real-time statistics (subscribers, verification codes, daily metrics)
-- **WeChat Configuration**: Token, AppID, AppSecret, EncodingAESKey management with live validation
-- **User Management**: Search and view subscriber list with verification history
-- **Verification Logs**: Audit trail of all generated codes with status tracking
-- **Security Settings**: Password management and WeChat server verification testing
-- **System Health**: Memory usage, database connections, uptime monitoring
+- **Dashboard** — real-time stats and daily metrics
+- **WeChat Config** — Token, AppID, AppSecret management with live validation
+- **User Management** — subscriber list with search and verification history
+- **Verification Logs** — audit trail with status tracking
+- **Security Settings** — password management, end-to-end verification testing
+- **System Health** — memory, DB connections, uptime
 
-**Configuration Sync**: Changes made in the admin UI are automatically saved to both the database and `config.toml` file, keeping them in sync. This ensures configuration persists across restarts and can be version-controlled.
+## Installation
 
-**Verification Test**: The "发送验证请求" button in the Security Settings page computes the correct SHA1 signature client-side using your configured token, providing a real end-to-end test of the WeChat verification endpoint.
+### Prerequisites
 
-## Storage Backends
+- Rust 1.75+ (build from source)
+- PostgreSQL 12+ or Redis 6+
+- Docker & Docker Compose (recommended)
 
-### PostgreSQL
-
-**Pros:**
-- Full SQL query capabilities
-- ACID transactions
-- Better for complex queries and reporting
-
-**Cons:**
-- Slower than Redis for simple operations
-- Requires schema migrations
-
-**Tables:**
-- `wechat_users`: User subscriptions
-- `verification_codes`: Generated codes
-- `app_config`: Application settings
-
-### Redis
-
-**Pros:**
-- Extremely fast for simple operations
-- Automatic TTL for verification codes
-- No schema migrations needed
-
-**Cons:**
-- Limited query capabilities
-- Data persistence depends on configuration
-- Less suitable for complex reporting
-
-**Data Structures:**
-- Hashes: User and code details
-- Sorted Sets: Indexing by timestamp
-- Strings: Configuration
-
-## Development
-
-### Run Locally
+### Build from Source
 
 ```bash
-# Create config file
+cargo build --release
+# Binary at target/release/wechat-rs
+```
+
+### Docker
+
+```bash
 cp config.toml.example config.toml
-# Edit config.toml (set storage.database_url, admin.secret, etc.)
+# Edit config.toml
 
-# Run with debug logging
-RUST_LOG=debug cargo run
+docker-compose up -d      # Pulls image from DockerHub
+docker-compose logs -f    # View logs
+docker-compose down       # Stop
 ```
 
-### Testing
+**Docker Hub:** https://hub.docker.com/r/davepaine/wechat-rs
+
+### Rebuild and Push
 
 ```bash
-# Run tests
-cargo test
-
-# Format code
-cargo fmt
-
-# Lint
-cargo clippy
+cargo build --release
+docker-compose down && docker-compose up -d --build
+docker tag wechat-sever:latest davepaine/wechat-rs:latest
+docker push davepaine/wechat-rs:latest
 ```
 
-### Database Migrations
-
-For PostgreSQL, tables are created automatically on startup:
-- `wechat_users`
-- `verification_codes`
-- `app_config`
-
-For Redis, no setup required.
-
-## Deployment Notes
+## Deployment
 
 ### Nginx Reverse Proxy
 
@@ -473,28 +227,49 @@ server {
 
 ### HTTPS
 
-Use Let's Encrypt with Certbot:
 ```bash
 certbot --nginx -d your-domain.com
 ```
 
 ### Firewall
 
-The Docker container maps host port **3317** to container port 3000. If using Nginx reverse proxy, open ports 80/443:
 ```bash
-ufw allow 80/tcp
-ufw allow 443/tcp
-```
+# With Nginx reverse proxy
+ufw allow 80/tcp && ufw allow 443/tcp
 
-If accessing directly without a reverse proxy:
-```bash
+# Direct access (no proxy)
 ufw allow 3317/tcp
 ```
 
-## License
+## Development
 
-MIT
+```bash
+# Run locally
+cp config.toml.example config.toml
+RUST_LOG=debug cargo run
+
+# Test, format, lint
+cargo test
+cargo fmt
+cargo clippy
+```
+
+Logging verbosity via `RUST_LOG` (e.g., `RUST_LOG=wechat_rs=info,tower_http=debug`).
+
+PostgreSQL tables (`wechat_users`, `verification_codes`, `app_config`) are auto-created on startup. Redis requires no setup.
+
+## Roadmap
+
+- [ ] WeChat Mini Program support
+- [ ] Template message sending
+- [ ] Richer event handling (location, image, voice)
+- [ ] CLI scaffolding tool for quick project setup
+- [ ] Multi-account support
 
 ## Contributing
 
-Contributions are welcome! Please open an issue or submit a pull request.
+Contributions are welcome! Feel free to open an issue or submit a pull request.
+
+## License
+
+[MIT](LICENSE)
