@@ -20,12 +20,12 @@ use storage::Storage;
 
 // ── TOML 配置文件结构 ─────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct FileConfig {
-    pub server:  ServerSection,
-    pub admin:   AdminSection,
-    pub wechat:  WechatSection,
+    pub server: ServerSection,
+    pub admin: AdminSection,
+    pub wechat: WechatSection,
     pub upstream: UpstreamSection,
     pub storage: StorageSection,
 }
@@ -34,27 +34,27 @@ pub struct FileConfig {
 #[serde(default)]
 pub struct ServerSection {
     pub listen_addr: String,
-    pub site_name:   String,
-    pub domain:      String,
+    pub site_name: String,
+    pub domain: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AdminSection {
     pub password: String,
-    pub secret:   String,
+    pub secret: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct WechatSection {
-    pub token:            String,
-    pub appid:            String,
-    pub appsecret:        String,
+    pub token: String,
+    pub appid: String,
+    pub appsecret: String,
     pub encoding_aes_key: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct UpstreamSection {
     pub server_token: String,
@@ -66,27 +66,15 @@ pub struct StorageSection {
     #[serde(rename = "type")]
     pub storage_type: String,
     pub database_url: String,
-    pub redis_url:    String,
-}
-
-impl Default for FileConfig {
-    fn default() -> Self {
-        Self {
-            server:   ServerSection::default(),
-            admin:    AdminSection::default(),
-            wechat:   WechatSection::default(),
-            upstream: UpstreamSection::default(),
-            storage:  StorageSection::default(),
-        }
-    }
+    pub redis_url: String,
 }
 
 impl Default for ServerSection {
     fn default() -> Self {
         Self {
             listen_addr: "0.0.0.0:3000".into(),
-            site_name:   "微信服务管理后台".into(),
-            domain:      "localhost".into(),
+            site_name: "微信服务管理后台".into(),
+            domain: "localhost".into(),
         }
     }
 }
@@ -95,25 +83,8 @@ impl Default for AdminSection {
     fn default() -> Self {
         Self {
             password: "admin123".into(),
-            secret:   "change_me_jwt_secret".into(),
+            secret: "change_me_jwt_secret".into(),
         }
-    }
-}
-
-impl Default for WechatSection {
-    fn default() -> Self {
-        Self {
-            token:            String::new(),
-            appid:            String::new(),
-            appsecret:        String::new(),
-            encoding_aes_key: String::new(),
-        }
-    }
-}
-
-impl Default for UpstreamSection {
-    fn default() -> Self {
-        Self { server_token: String::new() }
     }
 }
 
@@ -122,7 +93,7 @@ impl Default for StorageSection {
         Self {
             storage_type: "postgres".into(),
             database_url: String::new(),
-            redis_url:    String::new(),
+            redis_url: String::new(),
         }
     }
 }
@@ -150,14 +121,13 @@ pub fn write_back_toml(path: &PathBuf, cfg: &AppConfig) -> Result<(), String> {
         .unwrap_or_default();
 
     file_cfg.server.site_name = cfg.site_name.clone();
-    file_cfg.server.domain    = cfg.domain.clone();
-    file_cfg.wechat.token            = cfg.wechat_token.clone();
-    file_cfg.wechat.appid            = cfg.wechat_appid.clone();
-    file_cfg.wechat.appsecret        = cfg.wechat_appsecret.clone();
+    file_cfg.server.domain = cfg.domain.clone();
+    file_cfg.wechat.token = cfg.wechat_token.clone();
+    file_cfg.wechat.appid = cfg.wechat_appid.clone();
+    file_cfg.wechat.appsecret = cfg.wechat_appsecret.clone();
     file_cfg.wechat.encoding_aes_key = cfg.wechat_encoding_aes_key.clone();
 
-    let content = toml::to_string_pretty(&file_cfg)
-        .map_err(|e| format!("serialize toml: {e}"))?;
+    let content = toml::to_string_pretty(&file_cfg).map_err(|e| format!("serialize toml: {e}"))?;
     fs::write(path, content).map_err(|e| format!("write {}: {e}", path.display()))
 }
 
@@ -165,34 +135,40 @@ pub fn write_back_toml(path: &PathBuf, cfg: &AppConfig) -> Result<(), String> {
 
 #[derive(Clone)]
 pub struct AppState {
-    pub db:                 Arc<dyn Storage>,
-    pub config:             Arc<RwLock<AppConfig>>,
-    pub admin_secret:       String,
-    pub admin_password:     String,
+    pub db: Arc<dyn Storage>,
+    pub config: Arc<RwLock<AppConfig>>,
+    pub admin_secret: String,
+    pub admin_password: String,
     pub wechat_server_token: String,
-    pub config_path:        PathBuf,
-    pub started_at:         Instant,
+    pub config_path: PathBuf,
+    pub started_at: Instant,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
-    pub wechat_token:              String,
-    pub wechat_appid:              String,
-    pub wechat_appsecret:          String,
-    pub wechat_encoding_aes_key:   String,
-    pub admin_password_hash:       String,
-    pub welcome_message:           String,
-    pub site_name:                 String,
-    pub domain:                    String,
+    pub wechat_token: String,
+    pub wechat_appid: String,
+    pub wechat_appsecret: String,
+    pub wechat_encoding_aes_key: String,
+    pub admin_password_hash: String,
+    pub welcome_message: String,
+    pub site_name: String,
+    pub domain: String,
 }
 
 #[derive(Deserialize)]
 pub struct PageParams {
-    #[serde(default = "default_page")] pub page: i64,
-    #[serde(default = "default_size")] pub size: i64,
+    #[serde(default = "default_page")]
+    pub page: i64,
+    #[serde(default = "default_size")]
+    pub size: i64,
 }
-fn default_page() -> i64 { 1 }
-fn default_size() -> i64 { 20 }
+fn default_page() -> i64 {
+    1
+}
+fn default_size() -> i64 {
+    20
+}
 
 pub async fn save_config(db: &dyn Storage, cfg: &AppConfig) -> Result<(), storage::StorageError> {
     let json = serde_json::to_string(cfg).unwrap();
@@ -204,39 +180,43 @@ pub async fn save_config(db: &dyn Storage, cfg: &AppConfig) -> Result<(), storag
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| "wechat_rs=info,tower_http=debug".into()))
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "wechat_rs=info,tower_http=debug".into()),
+        )
         .init();
 
     // 加载 TOML 配置文件（优先 CONFIG_PATH 环境变量，否则当前目录 config.toml）
-    let config_path = PathBuf::from(
-        env::var("CONFIG_PATH").unwrap_or_else(|_| "config.toml".into())
-    );
+    let config_path =
+        PathBuf::from(env::var("CONFIG_PATH").unwrap_or_else(|_| "config.toml".into()));
     info!("loading config from: {}", config_path.display());
     let fc = load_file_config(&config_path);
 
-    let addr             = fc.server.listen_addr.clone();
-    let admin_secret     = fc.admin.secret.clone();
-    let admin_password   = fc.admin.password.clone();
+    let addr = fc.server.listen_addr.clone();
+    let admin_secret = fc.admin.secret.clone();
+    let admin_password = fc.admin.password.clone();
     let wechat_server_token = fc.upstream.server_token.clone();
-    let storage_type     = fc.storage.storage_type.clone();
+    let storage_type = fc.storage.storage_type.clone();
 
     // 从 TOML 构建 AppConfig 初始值
     let initial_cfg = AppConfig {
-        wechat_token:            fc.wechat.token.clone(),
-        wechat_appid:            fc.wechat.appid.clone(),
-        wechat_appsecret:        fc.wechat.appsecret.clone(),
+        wechat_token: fc.wechat.token.clone(),
+        wechat_appid: fc.wechat.appid.clone(),
+        wechat_appsecret: fc.wechat.appsecret.clone(),
         wechat_encoding_aes_key: fc.wechat.encoding_aes_key.clone(),
-        admin_password_hash:     String::new(),
-        welcome_message:         "感谢关注！".into(),
-        site_name:               fc.server.site_name.clone(),
-        domain:                  fc.server.domain.clone(),
+        admin_password_hash: String::new(),
+        welcome_message: "感谢关注！".into(),
+        site_name: fc.server.site_name.clone(),
+        domain: fc.server.domain.clone(),
     };
 
     let db: Arc<dyn Storage> = match storage_type.as_str() {
         "redis" => {
             let redis_url = &fc.storage.redis_url;
-            assert!(!redis_url.is_empty(), "storage.redis_url must be set for redis storage");
+            assert!(
+                !redis_url.is_empty(),
+                "storage.redis_url must be set for redis storage"
+            );
             let store = storage::redis_store::RedisStorage::new(redis_url)
                 .await
                 .expect("failed to connect to redis");
@@ -245,25 +225,42 @@ async fn main() {
         }
         _ => {
             let database_url = &fc.storage.database_url;
-            assert!(!database_url.is_empty(), "storage.database_url must be set for postgres storage");
-            let pool = PgPoolOptions::new().max_connections(10)
-                .connect(database_url).await.expect("failed to connect to postgres");
+            assert!(
+                !database_url.is_empty(),
+                "storage.database_url must be set for postgres storage"
+            );
+            let pool = PgPoolOptions::new()
+                .max_connections(10)
+                .connect(database_url)
+                .await
+                .expect("failed to connect to postgres");
 
-            sqlx::query(r#"
+            sqlx::query(
+                r#"
                 CREATE TABLE IF NOT EXISTS wechat_users (
                     openid TEXT PRIMARY KEY, nickname TEXT DEFAULT '',
                     headimgurl TEXT DEFAULT '', subscribe BOOLEAN DEFAULT TRUE,
                     created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ
                 )
-            "#).execute(&pool).await.expect("migrate failed: wechat_users");
+            "#,
+            )
+            .execute(&pool)
+            .await
+            .expect("migrate failed: wechat_users");
 
-            sqlx::query(r#"
+            sqlx::query(
+                r#"
                 CREATE TABLE IF NOT EXISTS app_config (
                     key TEXT PRIMARY KEY, value TEXT NOT NULL
                 )
-            "#).execute(&pool).await.expect("migrate failed: app_config");
+            "#,
+            )
+            .execute(&pool)
+            .await
+            .expect("migrate failed: app_config");
 
-            sqlx::query(r#"
+            sqlx::query(
+                r#"
                 CREATE TABLE IF NOT EXISTS verification_codes (
                     id SERIAL PRIMARY KEY,
                     openid TEXT NOT NULL,
@@ -274,12 +271,21 @@ async fn main() {
                     expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '5 minutes'),
                     used BOOLEAN NOT NULL DEFAULT FALSE
                 )
-            "#).execute(&pool).await.expect("migrate failed: verification_codes");
+            "#,
+            )
+            .execute(&pool)
+            .await
+            .expect("migrate failed: verification_codes");
 
-            sqlx::query(r#"
+            sqlx::query(
+                r#"
                 ALTER TABLE verification_codes ADD COLUMN IF NOT EXISTS purpose TEXT DEFAULT '';
                 ALTER TABLE verification_codes ADD COLUMN IF NOT EXISTS upstream_id TEXT DEFAULT '';
-            "#).execute(&pool).await.ok();
+            "#,
+            )
+            .execute(&pool)
+            .await
+            .ok();
 
             info!("using PostgreSQL storage: {}", database_url);
             Arc::new(storage::postgres::PgStorage::new(pool))
@@ -292,11 +298,20 @@ async fn main() {
         Some(json) => {
             let mut db_cfg: AppConfig = serde_json::from_str(&json).unwrap_or(initial_cfg.clone());
             // DB 中未设置的字段回退到 TOML 值
-            if db_cfg.wechat_token.is_empty()            { db_cfg.wechat_token = initial_cfg.wechat_token.clone(); }
-            if db_cfg.wechat_appid.is_empty()            { db_cfg.wechat_appid = initial_cfg.wechat_appid.clone(); }
-            if db_cfg.wechat_appsecret.is_empty()        { db_cfg.wechat_appsecret = initial_cfg.wechat_appsecret.clone(); }
-            if db_cfg.wechat_encoding_aes_key.is_empty() { db_cfg.wechat_encoding_aes_key = initial_cfg.wechat_encoding_aes_key.clone(); }
-            if db_cfg.site_name == "微信服务管理后台" && initial_cfg.site_name != "微信服务管理后台" {
+            if db_cfg.wechat_token.is_empty() {
+                db_cfg.wechat_token = initial_cfg.wechat_token.clone();
+            }
+            if db_cfg.wechat_appid.is_empty() {
+                db_cfg.wechat_appid = initial_cfg.wechat_appid.clone();
+            }
+            if db_cfg.wechat_appsecret.is_empty() {
+                db_cfg.wechat_appsecret = initial_cfg.wechat_appsecret.clone();
+            }
+            if db_cfg.wechat_encoding_aes_key.is_empty() {
+                db_cfg.wechat_encoding_aes_key = initial_cfg.wechat_encoding_aes_key.clone();
+            }
+            if db_cfg.site_name == "微信服务管理后台" && initial_cfg.site_name != "微信服务管理后台"
+            {
                 db_cfg.site_name = initial_cfg.site_name.clone();
             }
             if db_cfg.domain == "localhost" && initial_cfg.domain != "localhost" {
@@ -308,20 +323,30 @@ async fn main() {
     };
     // Trim all config values to prevent whitespace issues from DB or TOML
     let mut cfg = cfg;
-    cfg.wechat_token            = cfg.wechat_token.trim().to_string();
-    cfg.wechat_appid            = cfg.wechat_appid.trim().to_string();
-    cfg.wechat_appsecret        = cfg.wechat_appsecret.trim().to_string();
+    cfg.wechat_token = cfg.wechat_token.trim().to_string();
+    cfg.wechat_appid = cfg.wechat_appid.trim().to_string();
+    cfg.wechat_appsecret = cfg.wechat_appsecret.trim().to_string();
     cfg.wechat_encoding_aes_key = cfg.wechat_encoding_aes_key.trim().to_string();
-    cfg.site_name               = cfg.site_name.trim().to_string();
-    cfg.domain                  = cfg.domain.trim().to_string();
+    cfg.site_name = cfg.site_name.trim().to_string();
+    cfg.domain = cfg.domain.trim().to_string();
     // Persist trimmed values back to DB
     if let Err(e) = save_config(&*db, &cfg).await {
         tracing::warn!("failed to persist trimmed config: {e}");
     }
 
-    info!("config loaded, wechat_token={}, aes_key={}",
-        if cfg.wechat_token.is_empty() { "<empty>" } else { "***" },
-        if cfg.wechat_encoding_aes_key.is_empty() { "<empty>" } else { "***" });
+    info!(
+        "config loaded, wechat_token={}, aes_key={}",
+        if cfg.wechat_token.is_empty() {
+            "<empty>"
+        } else {
+            "***"
+        },
+        if cfg.wechat_encoding_aes_key.is_empty() {
+            "<empty>"
+        } else {
+            "***"
+        }
+    );
 
     let state = Arc::new(AppState {
         db,
@@ -334,11 +359,11 @@ async fn main() {
     });
 
     let app = Router::new()
-        .route("/wx",                get(wechat::verify).post(wechat::webhook))
-        .route("/users",             get(wechat::get_users))
-        .route("/api/wechat/user",   get(api::wechat_user))
+        .route("/wx", get(wechat::verify).post(wechat::webhook))
+        .route("/users", get(wechat::get_users))
+        .route("/api/wechat/user", get(api::wechat_user))
         .route("/admin/menu/create", post(admin::create_menu))
-        .nest("/admin",              admin::router(state.clone()))
+        .nest("/admin", admin::router(state.clone()))
         .with_state(state)
         .layer(tower_http::trace::TraceLayer::new_for_http())
         .layer(tower_http::cors::CorsLayer::permissive());

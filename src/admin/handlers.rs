@@ -1,8 +1,8 @@
 //! 管理后台 API 处理器
 
 use axum::{
-    extract::{State, Query, Path},
-    http::{StatusCode, HeaderMap},
+    extract::{Path, Query, State},
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     Json,
 };
@@ -10,40 +10,44 @@ use bcrypt::{hash, DEFAULT_COST};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use crate::{AppState, PageParams, save_config, write_back_toml, storage};
+use super::{auth, make_token, mask, verify as bcrypt_verify};
+use crate::{save_config, storage, write_back_toml, AppState, PageParams};
 use storage::CodeInfo;
-use super::{make_token, mask, auth, verify as bcrypt_verify};
 
 // ── 请求 / 响应结构 ───────────────────────────────────────────────────────────
 
 #[derive(Deserialize)]
-pub struct LoginReq { pub password: String }
+pub struct LoginReq {
+    pub password: String,
+}
 
 #[derive(Serialize)]
-pub struct LoginResp { pub token: String }
+pub struct LoginResp {
+    pub token: String,
+}
 
 #[derive(Deserialize)]
 pub struct UpdateConfigReq {
-    pub wechat_token:     Option<String>,
-    pub wechat_appid:     Option<String>,
+    pub wechat_token: Option<String>,
+    pub wechat_appid: Option<String>,
     pub wechat_appsecret: Option<String>,
     pub wechat_encoding_aes_key: Option<String>,
-    pub welcome_message:  Option<String>,
-    pub new_password:     Option<String>,
-    pub site_name:        Option<String>,
-    pub domain:           Option<String>,
+    pub welcome_message: Option<String>,
+    pub new_password: Option<String>,
+    pub site_name: Option<String>,
+    pub domain: Option<String>,
 }
 
 #[derive(Serialize)]
 pub struct ConfigResp {
-    pub wechat_token:     String,
-    pub wechat_appid:     String,
+    pub wechat_token: String,
+    pub wechat_appid: String,
     pub wechat_appsecret_masked: String,
     pub wechat_encoding_aes_key: String,
-    pub welcome_message:  String,
-    pub has_password:     bool,
-    pub site_name:        String,
-    pub domain:           String,
+    pub welcome_message: String,
+    pub has_password: bool,
+    pub site_name: String,
+    pub domain: String,
 }
 
 #[derive(Serialize)]
@@ -88,7 +92,11 @@ pub async fn login(
     };
 
     if !ok {
-        return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error":"wrong password"}))).into_response();
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({"error":"wrong password"})),
+        )
+            .into_response();
     }
 
     if hash_stored.is_empty() {
@@ -98,7 +106,10 @@ pub async fn login(
         let _ = save_config(&*state.db, &cfg).await;
     }
 
-    Json(LoginResp { token: make_token(&state.admin_secret) }).into_response()
+    Json(LoginResp {
+        token: make_token(&state.admin_secret),
+    })
+    .into_response()
 }
 
 pub async fn get_config(
@@ -108,15 +119,16 @@ pub async fn get_config(
     auth!(state, headers);
     let cfg = state.config.read().await;
     Json(ConfigResp {
-        wechat_token:           cfg.wechat_token.clone(),
-        wechat_appid:           cfg.wechat_appid.clone(),
+        wechat_token: cfg.wechat_token.clone(),
+        wechat_appid: cfg.wechat_appid.clone(),
         wechat_appsecret_masked: mask(&cfg.wechat_appsecret),
         wechat_encoding_aes_key: mask(&cfg.wechat_encoding_aes_key),
-        welcome_message:        cfg.welcome_message.clone(),
-        has_password:           !cfg.admin_password_hash.is_empty(),
-        site_name:              cfg.site_name.clone(),
-        domain:                 cfg.domain.clone(),
-    }).into_response()
+        welcome_message: cfg.welcome_message.clone(),
+        has_password: !cfg.admin_password_hash.is_empty(),
+        site_name: cfg.site_name.clone(),
+        domain: cfg.domain.clone(),
+    })
+    .into_response()
 }
 
 pub async fn update_config(
@@ -126,15 +138,31 @@ pub async fn update_config(
 ) -> impl IntoResponse {
     auth!(state, headers);
     let mut cfg = state.config.write().await;
-    if let Some(v) = body.wechat_token    { cfg.wechat_token = v.trim().to_string(); }
-    if let Some(v) = body.wechat_appid   { cfg.wechat_appid = v.trim().to_string(); }
-    if let Some(v) = body.wechat_appsecret { cfg.wechat_appsecret = v.trim().to_string(); }
-    if let Some(v) = body.wechat_encoding_aes_key { cfg.wechat_encoding_aes_key = v.trim().to_string(); }
-    if let Some(v) = body.welcome_message { cfg.welcome_message = v; }
-    if let Some(v) = body.site_name { cfg.site_name = v.trim().to_string(); }
-    if let Some(v) = body.domain { cfg.domain = v.trim().to_string(); }
+    if let Some(v) = body.wechat_token {
+        cfg.wechat_token = v.trim().to_string();
+    }
+    if let Some(v) = body.wechat_appid {
+        cfg.wechat_appid = v.trim().to_string();
+    }
+    if let Some(v) = body.wechat_appsecret {
+        cfg.wechat_appsecret = v.trim().to_string();
+    }
+    if let Some(v) = body.wechat_encoding_aes_key {
+        cfg.wechat_encoding_aes_key = v.trim().to_string();
+    }
+    if let Some(v) = body.welcome_message {
+        cfg.welcome_message = v;
+    }
+    if let Some(v) = body.site_name {
+        cfg.site_name = v.trim().to_string();
+    }
+    if let Some(v) = body.domain {
+        cfg.domain = v.trim().to_string();
+    }
     if let Some(pw) = body.new_password {
-        if !pw.is_empty() { cfg.admin_password_hash = hash(&pw, DEFAULT_COST).unwrap(); }
+        if !pw.is_empty() {
+            cfg.admin_password_hash = hash(&pw, DEFAULT_COST).unwrap();
+        }
     }
     if let Err(e) = save_config(&*state.db, &cfg).await {
         tracing::error!("save config: {e}");
@@ -147,14 +175,17 @@ pub async fn update_config(
     Json(serde_json::json!({"ok": true})).into_response()
 }
 
-pub async fn stats(
-    State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
-) -> impl IntoResponse {
+pub async fn stats(State(state): State<Arc<AppState>>, headers: HeaderMap) -> impl IntoResponse {
     auth!(state, headers);
     match state.db.count_subscribers().await {
-        Ok(n)  => Json(StatsResp { total_subscribers: n }).into_response(),
-        Err(e) => { tracing::error!("{e}"); (StatusCode::INTERNAL_SERVER_ERROR, "db error").into_response() }
+        Ok(n) => Json(StatsResp {
+            total_subscribers: n,
+        })
+        .into_response(),
+        Err(e) => {
+            tracing::error!("{e}");
+            (StatusCode::INTERNAL_SERVER_ERROR, "db error").into_response()
+        }
     }
 }
 
@@ -165,8 +196,11 @@ pub async fn users(
 ) -> impl IntoResponse {
     auth!(state, headers);
     match state.db.list_users(p.page, p.size).await {
-        Ok(u)  => Json(u).into_response(),
-        Err(e) => { tracing::error!("{e}"); (StatusCode::INTERNAL_SERVER_ERROR, "db error").into_response() }
+        Ok(u) => Json(u).into_response(),
+        Err(e) => {
+            tracing::error!("{e}");
+            (StatusCode::INTERNAL_SERVER_ERROR, "db error").into_response()
+        }
     }
 }
 
@@ -191,7 +225,8 @@ pub async fn stats_detailed(
         used_codes: used,
         expired_codes: expired,
         total_codes,
-    }).into_response()
+    })
+    .into_response()
 }
 
 pub async fn codes_list(
@@ -223,7 +258,10 @@ pub async fn users_search(
     }
     match state.db.search_users(&q).await {
         Ok(u) => Json(u).into_response(),
-        Err(e) => { tracing::error!("{e}"); (StatusCode::INTERNAL_SERVER_ERROR, "db error").into_response() }
+        Err(e) => {
+            tracing::error!("{e}");
+            (StatusCode::INTERNAL_SERVER_ERROR, "db error").into_response()
+        }
     }
 }
 
@@ -235,14 +273,14 @@ pub async fn user_codes(
     auth!(state, headers);
     match state.db.get_user_codes(&openid).await {
         Ok(c) => Json(c).into_response(),
-        Err(e) => { tracing::error!("{e}"); (StatusCode::INTERNAL_SERVER_ERROR, "db error").into_response() }
+        Err(e) => {
+            tracing::error!("{e}");
+            (StatusCode::INTERNAL_SERVER_ERROR, "db error").into_response()
+        }
     }
 }
 
-pub async fn health(
-    State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
-) -> impl IntoResponse {
+pub async fn health(State(state): State<Arc<AppState>>, headers: HeaderMap) -> impl IntoResponse {
     auth!(state, headers);
     let uptime_secs = state.started_at.elapsed().as_secs();
     let mut sys = sysinfo::System::new();
@@ -255,5 +293,6 @@ pub async fn health(
         "memory_used_mb": sys.used_memory() / 1024 / 1024,
         "db_connected": db_ok,
         "db_connections": db_conns,
-    })).into_response()
+    }))
+    .into_response()
 }
