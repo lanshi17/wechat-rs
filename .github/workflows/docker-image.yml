@@ -24,7 +24,17 @@ jobs:
       - name: Build release binary
         run: cargo build --release --verbose
 
+      - name: Check Docker Hub credentials
+        id: dockerhub
+        run: |
+          if [ -n "${{ secrets.DOCKERHUB_USERNAME }}" ] && [ -n "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Log in to Docker Hub
+        if: steps.dockerhub.outputs.available == 'true'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -41,9 +51,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: |
-            davepaine/wechat-rs
-            ghcr.io/${{ github.repository }}
+          images: ghcr.io/${{ github.repository }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=semver,pattern={{version}}
