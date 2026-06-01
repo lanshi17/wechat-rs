@@ -1,4 +1,5 @@
-FROM registry.cn-hangzhou.aliyuncs.com/davepaine/wechat-rs:latest
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY target/release/wechat-rs /usr/local/bin/wechat-rs
 EXPOSE 3000
 ENV CONFIG_PATH=/etc/wechat-rs/config.toml
