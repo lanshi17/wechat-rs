@@ -1,4 +1,4 @@
-use super::{Storage, StorageError, UserInfo, CodeInfo};
+use super::{CodeInfo, Storage, StorageError, UserInfo};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
@@ -39,7 +39,17 @@ impl Storage for PgStorage {
 
     async fn list_users(&self, page: i64, size: i64) -> Result<Vec<UserInfo>, StorageError> {
         let offset = (page - 1).max(0) * size;
-        let rows = sqlx::query_as::<_, (String, String, String, bool, Option<DateTime<Utc>>, Option<DateTime<Utc>>)>(
+        let rows = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                String,
+                bool,
+                Option<DateTime<Utc>>,
+                Option<DateTime<Utc>>,
+            ),
+        >(
             r#"SELECT openid, nickname, headimgurl, subscribe, created_at, updated_at
                FROM wechat_users WHERE subscribe = true
                ORDER BY created_at DESC LIMIT $1 OFFSET $2"#,
@@ -52,22 +62,25 @@ impl Storage for PgStorage {
 
         Ok(rows
             .into_iter()
-            .map(|(openid, nickname, headimgurl, subscribe, created_at, updated_at)| UserInfo {
-                openid,
-                nickname,
-                headimgurl,
-                subscribe,
-                created_at,
-                updated_at,
-            })
+            .map(
+                |(openid, nickname, headimgurl, subscribe, created_at, updated_at)| UserInfo {
+                    openid,
+                    nickname,
+                    headimgurl,
+                    subscribe,
+                    created_at,
+                    updated_at,
+                },
+            )
             .collect())
     }
 
     async fn count_subscribers(&self) -> Result<i64, StorageError> {
-        let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM wechat_users WHERE subscribe = true")
-            .fetch_one(&self.pool)
-            .await
-            .map_err(|e| StorageError::Database(e.to_string()))?;
+        let row: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM wechat_users WHERE subscribe = true")
+                .fetch_one(&self.pool)
+                .await
+                .map_err(|e| StorageError::Database(e.to_string()))?;
         Ok(row.0)
     }
 
@@ -80,16 +93,27 @@ impl Storage for PgStorage {
     }
 
     async fn count_today_new_users(&self) -> Result<i64, StorageError> {
-        let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM wechat_users WHERE created_at >= CURRENT_DATE")
-            .fetch_one(&self.pool)
-            .await
-            .map_err(|e| StorageError::Database(e.to_string()))?;
+        let row: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM wechat_users WHERE created_at >= CURRENT_DATE")
+                .fetch_one(&self.pool)
+                .await
+                .map_err(|e| StorageError::Database(e.to_string()))?;
         Ok(row.0)
     }
 
     async fn search_users(&self, query: &str) -> Result<Vec<UserInfo>, StorageError> {
         let pattern = format!("%{}%", query);
-        let rows = sqlx::query_as::<_, (String, String, String, bool, Option<DateTime<Utc>>, Option<DateTime<Utc>>)>(
+        let rows = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                String,
+                bool,
+                Option<DateTime<Utc>>,
+                Option<DateTime<Utc>>,
+            ),
+        >(
             r#"SELECT openid, nickname, headimgurl, subscribe, created_at, updated_at
                FROM wechat_users WHERE openid LIKE $1
                ORDER BY created_at DESC LIMIT 50"#,
@@ -101,18 +125,25 @@ impl Storage for PgStorage {
 
         Ok(rows
             .into_iter()
-            .map(|(openid, nickname, headimgurl, subscribe, created_at, updated_at)| UserInfo {
-                openid,
-                nickname,
-                headimgurl,
-                subscribe,
-                created_at,
-                updated_at,
-            })
+            .map(
+                |(openid, nickname, headimgurl, subscribe, created_at, updated_at)| UserInfo {
+                    openid,
+                    nickname,
+                    headimgurl,
+                    subscribe,
+                    created_at,
+                    updated_at,
+                },
+            )
             .collect())
     }
 
-    async fn insert_code(&self, openid: &str, code: &str, expires_at: DateTime<Utc>) -> Result<(), StorageError> {
+    async fn insert_code(
+        &self,
+        openid: &str,
+        code: &str,
+        expires_at: DateTime<Utc>,
+    ) -> Result<(), StorageError> {
         let now = Utc::now();
         sqlx::query(
             "INSERT INTO verification_codes (openid, code, created_at, expires_at) VALUES ($1, $2, $3, $4)",
@@ -129,7 +160,18 @@ impl Storage for PgStorage {
 
     async fn list_codes(&self, page: i64, size: i64) -> Result<Vec<CodeInfo>, StorageError> {
         let offset = (page - 1).max(0) * size;
-        let rows = sqlx::query_as::<_, (i32, String, String, Option<String>, bool, Option<DateTime<Utc>>, Option<DateTime<Utc>>)>(
+        let rows = sqlx::query_as::<
+            _,
+            (
+                i32,
+                String,
+                String,
+                Option<String>,
+                bool,
+                Option<DateTime<Utc>>,
+                Option<DateTime<Utc>>,
+            ),
+        >(
             r#"SELECT id, openid, code, purpose, used, created_at, expires_at
                FROM verification_codes
                ORDER BY created_at DESC LIMIT $1 OFFSET $2"#,
@@ -142,15 +184,17 @@ impl Storage for PgStorage {
 
         Ok(rows
             .into_iter()
-            .map(|(id, openid, code, purpose, used, created_at, expires_at)| CodeInfo {
-                id,
-                openid,
-                code,
-                purpose,
-                used,
-                created_at,
-                expires_at,
-            })
+            .map(
+                |(id, openid, code, purpose, used, created_at, expires_at)| CodeInfo {
+                    id,
+                    openid,
+                    code,
+                    purpose,
+                    used,
+                    created_at,
+                    expires_at,
+                },
+            )
             .collect())
     }
 
@@ -163,18 +207,21 @@ impl Storage for PgStorage {
     }
 
     async fn count_today_codes(&self) -> Result<i64, StorageError> {
-        let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM verification_codes WHERE created_at >= CURRENT_DATE")
-            .fetch_one(&self.pool)
-            .await
-            .map_err(|e| StorageError::Database(e.to_string()))?;
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM verification_codes WHERE created_at >= CURRENT_DATE",
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| StorageError::Database(e.to_string()))?;
         Ok(row.0)
     }
 
     async fn count_used_codes(&self) -> Result<i64, StorageError> {
-        let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM verification_codes WHERE used = true")
-            .fetch_one(&self.pool)
-            .await
-            .map_err(|e| StorageError::Database(e.to_string()))?;
+        let row: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM verification_codes WHERE used = true")
+                .fetch_one(&self.pool)
+                .await
+                .map_err(|e| StorageError::Database(e.to_string()))?;
         Ok(row.0)
     }
 
@@ -189,7 +236,18 @@ impl Storage for PgStorage {
     }
 
     async fn get_user_codes(&self, openid: &str) -> Result<Vec<CodeInfo>, StorageError> {
-        let rows = sqlx::query_as::<_, (i32, String, String, Option<String>, bool, Option<DateTime<Utc>>, Option<DateTime<Utc>>)>(
+        let rows = sqlx::query_as::<
+            _,
+            (
+                i32,
+                String,
+                String,
+                Option<String>,
+                bool,
+                Option<DateTime<Utc>>,
+                Option<DateTime<Utc>>,
+            ),
+        >(
             r#"SELECT id, openid, code, purpose, used, created_at, expires_at
                FROM verification_codes WHERE openid = $1
                ORDER BY created_at DESC LIMIT 50"#,
@@ -201,19 +259,24 @@ impl Storage for PgStorage {
 
         Ok(rows
             .into_iter()
-            .map(|(id, openid, code, purpose, used, created_at, expires_at)| CodeInfo {
-                id,
-                openid,
-                code,
-                purpose,
-                used,
-                created_at,
-                expires_at,
-            })
+            .map(
+                |(id, openid, code, purpose, used, created_at, expires_at)| CodeInfo {
+                    id,
+                    openid,
+                    code,
+                    purpose,
+                    used,
+                    created_at,
+                    expires_at,
+                },
+            )
             .collect())
     }
 
-    async fn validate_code(&self, code: &str) -> Result<Option<(String, bool, DateTime<Utc>)>, StorageError> {
+    async fn validate_code(
+        &self,
+        code: &str,
+    ) -> Result<Option<(String, bool, DateTime<Utc>)>, StorageError> {
         let row: Option<(String, bool, DateTime<Utc>)> = sqlx::query_as(
             r#"SELECT openid, used, expires_at FROM verification_codes
                WHERE code = $1
@@ -227,10 +290,11 @@ impl Storage for PgStorage {
     }
 
     async fn load_config(&self) -> Result<Option<String>, StorageError> {
-        let row: Option<(String,)> = sqlx::query_as("SELECT value FROM app_config WHERE key = 'main' LIMIT 1")
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(|e| StorageError::Database(e.to_string()))?;
+        let row: Option<(String,)> =
+            sqlx::query_as("SELECT value FROM app_config WHERE key = 'main' LIMIT 1")
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(|e| StorageError::Database(e.to_string()))?;
         Ok(row.map(|(v,)| v))
     }
 
