@@ -63,14 +63,22 @@ pub trait Storage: Send + Sync + 'static {
     async fn search_users(&self, query: &str) -> Result<Vec<UserInfo>, StorageError>;
 
     // Verification codes
-    async fn insert_code(&self, openid: &str, code: &str, expires_at: DateTime<Utc>) -> Result<(), StorageError>;
+    async fn insert_code(
+        &self,
+        openid: &str,
+        code: &str,
+        expires_at: DateTime<Utc>,
+    ) -> Result<(), StorageError>;
     async fn list_codes(&self, page: i64, size: i64) -> Result<Vec<CodeInfo>, StorageError>;
     async fn count_codes(&self) -> Result<i64, StorageError>;
     async fn count_today_codes(&self) -> Result<i64, StorageError>;
     async fn count_used_codes(&self) -> Result<i64, StorageError>;
     async fn count_expired_codes(&self) -> Result<i64, StorageError>;
     async fn get_user_codes(&self, openid: &str) -> Result<Vec<CodeInfo>, StorageError>;
-    async fn validate_code(&self, code: &str) -> Result<Option<(String, bool, DateTime<Utc>)>, StorageError>;
+    async fn validate_code(
+        &self,
+        code: &str,
+    ) -> Result<Option<(String, bool, DateTime<Utc>)>, StorageError>;
 
     // Config
     async fn load_config(&self) -> Result<Option<String>, StorageError>;

@@ -2,8 +2,8 @@
 
 use aes::Aes256;
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
-use cbc::{Decryptor, Encryptor};
 use cbc::cipher::{BlockDecryptMut, BlockEncryptMut, KeyIvInit};
+use cbc::{Decryptor, Encryptor};
 use sha1::{Digest, Sha1};
 
 type Aes256CbcDec = Decryptor<Aes256>;
@@ -75,8 +75,7 @@ pub fn wx_decrypt(ciphertext_b64: &str, encoding_aes_key: &str) -> Result<String
     if pt.len() < 20 + msg_len {
         return Err("plaintext too short for msg_len".into());
     }
-    let msg = std::str::from_utf8(&pt[20..20 + msg_len])
-        .map_err(|e| format!("utf8 error: {e}"))?;
+    let msg = std::str::from_utf8(&pt[20..20 + msg_len]).map_err(|e| format!("utf8 error: {e}"))?;
     Ok(msg.to_string())
 }
 
@@ -94,7 +93,7 @@ pub fn wx_encrypt(plaintext: &str, encoding_aes_key: &str, appid: &str) -> Resul
     buf.extend_from_slice(appid_bytes);
 
     let pad_len = 32 - (buf.len() % 32);
-    buf.extend(std::iter::repeat(pad_len as u8).take(pad_len));
+    buf.extend(std::iter::repeat_n(pad_len as u8, pad_len));
 
     let msg_len = buf.len();
     let ct = Aes256CbcEnc::new(&key.into(), &iv.into())
