@@ -11,7 +11,7 @@ use serde::Deserialize;
 use std::sync::Arc;
 use tracing::info;
 
-use crate::crypto::{wx_decrypt, wx_encrypt, make_safe_signature, check_signature};
+use crate::crypto::{check_signature, make_safe_signature, wx_decrypt, wx_encrypt};
 use crate::{AppState, PageParams};
 
 // ── XML 消息类型 ──────────────────────────────────────────────────────────────
@@ -20,33 +20,45 @@ use crate::{AppState, PageParams};
 #[serde(rename = "xml")]
 #[allow(dead_code)]
 pub struct WxMessage {
-    #[serde(rename = "ToUserName")]   pub to_user_name:   String,
-    #[serde(rename = "FromUserName")] pub from_user_name: String,
-    #[serde(rename = "MsgType")]      pub msg_type:       String,
-    #[serde(rename = "Event")]        pub event:           Option<String>,
-    #[serde(rename = "EventKey")]     pub event_key:       Option<String>,
-    #[serde(rename = "Content")]      pub content:         Option<String>,
+    #[serde(rename = "ToUserName")]
+    pub to_user_name: String,
+    #[serde(rename = "FromUserName")]
+    pub from_user_name: String,
+    #[serde(rename = "MsgType")]
+    pub msg_type: String,
+    #[serde(rename = "Event")]
+    pub event: Option<String>,
+    #[serde(rename = "EventKey")]
+    pub event_key: Option<String>,
+    #[serde(rename = "Content")]
+    pub content: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename = "xml")]
 pub struct WxEnvelope {
-    #[serde(rename = "Encrypt")]      pub encrypt:      String,
-    #[serde(rename = "MsgSignature")] pub msg_signature: Option<String>,
-    #[serde(rename = "TimeStamp")]    pub timestamp:    Option<String>,
-    #[serde(rename = "Nonce")]        pub nonce:        Option<String>,
+    #[serde(rename = "Encrypt")]
+    pub encrypt: String,
+    #[serde(rename = "MsgSignature")]
+    pub msg_signature: Option<String>,
+    #[serde(rename = "TimeStamp")]
+    pub timestamp: Option<String>,
+    #[serde(rename = "Nonce")]
+    pub nonce: Option<String>,
 }
 
 // ── 查询参数 ──────────────────────────────────────────────────────────────────
 
 #[derive(Deserialize)]
 pub struct VerifyParams {
-    pub signature:   String,
-    pub timestamp:   String,
-    pub nonce:       String,
-    pub echostr:     String,
-    #[serde(default)] pub msg_signature: Option<String>,
-    #[serde(default)] pub encrypt:       Option<String>,
+    pub signature: String,
+    pub timestamp: String,
+    pub nonce: String,
+    pub echostr: String,
+    #[serde(default)]
+    pub msg_signature: Option<String>,
+    #[serde(default)]
+    pub encrypt: Option<String>,
 }
 
 // ── 路由处理器 ────────────────────────────────────────────────────────────────
@@ -83,10 +95,7 @@ pub async fn verify(
 }
 
 /// POST /wx — 微信消息回调
-pub async fn webhook(
-    State(state): State<Arc<AppState>>,
-    body: String,
-) -> impl IntoResponse {
+pub async fn webhook(State(state): State<Arc<AppState>>, body: String) -> impl IntoResponse {
     let cfg = state.config.read().await;
     let aes_key = cfg.wechat_encoding_aes_key.trim().to_string();
     let appid = cfg.wechat_appid.trim().to_string();
@@ -123,7 +132,7 @@ pub async fn webhook(
     };
 
     let msg: WxMessage = match quick_xml::de::from_str(&xml_to_parse) {
-        Ok(m)  => m,
+        Ok(m) => m,
         Err(e) => {
             tracing::warn!("xml parse error: {e}");
             return (StatusCode::BAD_REQUEST, "bad xml").into_response();
@@ -187,8 +196,11 @@ pub async fn get_users(
     Query(p): Query<PageParams>,
 ) -> impl IntoResponse {
     match state.db.list_users(p.page, p.size).await {
-        Ok(u)  => Json(u).into_response(),
-        Err(e) => { tracing::error!("{e}"); (StatusCode::INTERNAL_SERVER_ERROR, "db error").into_response() }
+        Ok(u) => Json(u).into_response(),
+        Err(e) => {
+            tracing::error!("{e}");
+            (StatusCode::INTERNAL_SERVER_ERROR, "db error").into_response()
+        }
     }
 }
 
@@ -221,7 +233,10 @@ async fn handle_message(state: &AppState, msg: &WxMessage) -> Option<String> {
     } else if msg.msg_type == "text" {
         if let Some(ref content) = msg.content {
             let content_lower = content.to_lowercase();
-            if content_lower.contains("验证码") || content_lower.contains("verify") || content_lower == "code" {
+            if content_lower.contains("验证码")
+                || content_lower.contains("verify")
+                || content_lower == "code"
+            {
                 Some(generate_code(state, &msg.from_user_name).await)
             } else {
                 None
@@ -254,7 +269,11 @@ pub async fn get_access_token(appid: &str, appsecret: &str) -> Result<String, St
         appid, appsecret
     );
     let client = reqwest::Client::new();
-    let resp = client.get(&url).send().await.map_err(|e| format!("request error: {e}"))?;
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("request error: {e}"))?;
     let body: serde_json::Value = resp.json().await.map_err(|e| format!("json error: {e}"))?;
     body.get("access_token")
         .and_then(|v| v.as_str())
@@ -262,15 +281,21 @@ pub async fn get_access_token(appid: &str, appsecret: &str) -> Result<String, St
         .ok_or_else(|| format!("no access_token: {}", body))
 }
 
-pub async fn create_menu(access_token: &str, menu_json: &serde_json::Value) -> Result<String, String> {
+pub async fn create_menu(
+    access_token: &str,
+    menu_json: &serde_json::Value,
+) -> Result<String, String> {
     let url = format!(
         "https://api.weixin.qq.com/cgi-bin/menu/create?access_token={}",
         access_token
     );
     let client = reqwest::Client::new();
-    let resp = client.post(&url)
+    let resp = client
+        .post(&url)
         .json(menu_json)
-        .send().await.map_err(|e| format!("request error: {e}"))?;
+        .send()
+        .await
+        .map_err(|e| format!("request error: {e}"))?;
     let body: serde_json::Value = resp.json().await.map_err(|e| format!("json error: {e}"))?;
     let errcode = body.get("errcode").and_then(|v| v.as_i64()).unwrap_or(-1);
     if errcode == 0 {

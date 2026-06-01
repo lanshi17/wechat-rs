@@ -1,7 +1,7 @@
-use super::{Storage, StorageError, UserInfo, CodeInfo};
+use super::{CodeInfo, Storage, StorageError, UserInfo};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use redis::{Client, aio::ConnectionManager, AsyncCommands};
+use redis::{aio::ConnectionManager, AsyncCommands, Client};
 
 pub struct RedisStorage {
     _client: Client,
@@ -14,7 +14,10 @@ impl RedisStorage {
         let conn = ConnectionManager::new(client.clone())
             .await
             .map_err(|e| format!("redis connection: {e}"))?;
-        Ok(Self { _client: client, conn })
+        Ok(Self {
+            _client: client,
+            conn,
+        })
     }
 
     fn now_ts() -> f64 {
@@ -39,10 +42,16 @@ impl Storage for RedisStorage {
         let now = Utc::now();
         let now_str = now.to_rfc3339();
 
-        let exists: bool = conn.exists(&key).await.map_err(|e| StorageError::Database(e.to_string()))?;
+        let exists: bool = conn
+            .exists(&key)
+            .await
+            .map_err(|e| StorageError::Database(e.to_string()))?;
 
         let created_at = if exists {
-            let val: String = conn.hget(&key, "created_at").await.unwrap_or_else(|_| now_str.clone());
+            let val: String = conn
+                .hget(&key, "created_at")
+                .await
+                .unwrap_or_else(|_| now_str.clone());
             val
         } else {
             now_str.clone()
@@ -69,12 +78,21 @@ impl Storage for RedisStorage {
 
         if subscribe {
             let ts = now.timestamp() as f64;
-            let _: () = conn.zadd("users:subscribed", openid, ts).await.map_err(|e| StorageError::Database(e.to_string()))?;
+            let _: () = conn
+                .zadd("users:subscribed", openid, ts)
+                .await
+                .map_err(|e| StorageError::Database(e.to_string()))?;
         } else {
-            let _: () = conn.zrem("users:subscribed", openid).await.map_err(|e| StorageError::Database(e.to_string()))?;
+            let _: () = conn
+                .zrem("users:subscribed", openid)
+                .await
+                .map_err(|e| StorageError::Database(e.to_string()))?;
         }
 
-        let _: () = conn.zadd("users:all", openid, now.timestamp() as f64).await.map_err(|e| StorageError::Database(e.to_string()))?;
+        let _: () = conn
+            .zadd("users:all", openid, now.timestamp() as f64)
+            .await
+            .map_err(|e| StorageError::Database(e.to_string()))?;
 
         Ok(())
     }
@@ -93,10 +111,8 @@ impl Storage for RedisStorage {
         let mut users = Vec::new();
         for oid in openids {
             let key = format!("user:{}", oid);
-            let fields: std::collections::HashMap<String, String> = conn
-                .hgetall(&key)
-                .await
-                .unwrap_or_default();
+            let fields: std::collections::HashMap<String, String> =
+                conn.hgetall(&key).await.unwrap_or_default();
             if fields.is_empty() {
                 continue;
             }
@@ -105,8 +121,16 @@ impl Storage for RedisStorage {
                 nickname: fields.get("nickname").cloned().unwrap_or_default(),
                 headimgurl: fields.get("headimgurl").cloned().unwrap_or_default(),
                 subscribe: fields.get("subscribe").map(|v| v == "1").unwrap_or(true),
-                created_at: fields.get("created_at").and_then(|s| DateTime::parse_from_rfc3339(s).ok().map(|d| d.with_timezone(&Utc))),
-                updated_at: fields.get("updated_at").and_then(|s| DateTime::parse_from_rfc3339(s).ok().map(|d| d.with_timezone(&Utc))),
+                created_at: fields.get("created_at").and_then(|s| {
+                    DateTime::parse_from_rfc3339(s)
+                        .ok()
+                        .map(|d| d.with_timezone(&Utc))
+                }),
+                updated_at: fields.get("updated_at").and_then(|s| {
+                    DateTime::parse_from_rfc3339(s)
+                        .ok()
+                        .map(|d| d.with_timezone(&Utc))
+                }),
             });
         }
         Ok(users)
@@ -114,20 +138,29 @@ impl Storage for RedisStorage {
 
     async fn count_subscribers(&self) -> Result<i64, StorageError> {
         let mut conn = self.conn.clone();
-        let count: i64 = conn.zcard("users:subscribed").await.map_err(|e| StorageError::Database(e.to_string()))?;
+        let count: i64 = conn
+            .zcard("users:subscribed")
+            .await
+            .map_err(|e| StorageError::Database(e.to_string()))?;
         Ok(count)
     }
 
     async fn count_total_users(&self) -> Result<i64, StorageError> {
         let mut conn = self.conn.clone();
-        let count: i64 = conn.zcard("users:all").await.map_err(|e| StorageError::Database(e.to_string()))?;
+        let count: i64 = conn
+            .zcard("users:all")
+            .await
+            .map_err(|e| StorageError::Database(e.to_string()))?;
         Ok(count)
     }
 
     async fn count_today_new_users(&self) -> Result<i64, StorageError> {
         let mut conn = self.conn.clone();
         let today = Self::today_start_ts();
-        let count: i64 = conn.zcount("users:all", today, "+inf").await.map_err(|e| StorageError::Database(e.to_string()))?;
+        let count: i64 = conn
+            .zcount("users:all", today, "+inf")
+            .await
+            .map_err(|e| StorageError::Database(e.to_string()))?;
         Ok(count)
     }
 
@@ -139,15 +172,24 @@ impl Storage for RedisStorage {
         for oid in all_openids {
             if oid.to_lowercase().contains(&query_lower) {
                 let key = format!("user:{}", oid);
-                let fields: std::collections::HashMap<String, String> = conn.hgetall(&key).await.unwrap_or_default();
+                let fields: std::collections::HashMap<String, String> =
+                    conn.hgetall(&key).await.unwrap_or_default();
                 if !fields.is_empty() {
                     results.push(UserInfo {
                         openid: fields.get("openid").cloned().unwrap_or(oid),
                         nickname: fields.get("nickname").cloned().unwrap_or_default(),
                         headimgurl: fields.get("headimgurl").cloned().unwrap_or_default(),
                         subscribe: fields.get("subscribe").map(|v| v == "1").unwrap_or(true),
-                        created_at: fields.get("created_at").and_then(|s| DateTime::parse_from_rfc3339(s).ok().map(|d| d.with_timezone(&Utc))),
-                        updated_at: fields.get("updated_at").and_then(|s| DateTime::parse_from_rfc3339(s).ok().map(|d| d.with_timezone(&Utc))),
+                        created_at: fields.get("created_at").and_then(|s| {
+                            DateTime::parse_from_rfc3339(s)
+                                .ok()
+                                .map(|d| d.with_timezone(&Utc))
+                        }),
+                        updated_at: fields.get("updated_at").and_then(|s| {
+                            DateTime::parse_from_rfc3339(s)
+                                .ok()
+                                .map(|d| d.with_timezone(&Utc))
+                        }),
                     });
                     if results.len() >= 50 {
                         break;
@@ -158,10 +200,18 @@ impl Storage for RedisStorage {
         Ok(results)
     }
 
-    async fn insert_code(&self, openid: &str, code: &str, expires_at: DateTime<Utc>) -> Result<(), StorageError> {
+    async fn insert_code(
+        &self,
+        openid: &str,
+        code: &str,
+        expires_at: DateTime<Utc>,
+    ) -> Result<(), StorageError> {
         let mut conn = self.conn.clone();
         let now = Utc::now();
-        let id: i64 = conn.incr("code:next_id", 1).await.map_err(|e| StorageError::Database(e.to_string()))?;
+        let id: i64 = conn
+            .incr("code:next_id", 1)
+            .await
+            .map_err(|e| StorageError::Database(e.to_string()))?;
         let key = format!("code:{}", id);
 
         let id_s = id.to_string();
@@ -192,8 +242,14 @@ impl Storage for RedisStorage {
             let _: () = conn.expire(&key, ttl).await.unwrap_or_default();
         }
 
-        let _: () = conn.zadd("codes:all", id, now.timestamp() as f64).await.map_err(|e| StorageError::Database(e.to_string()))?;
-        let _: () = conn.zadd(format!("codes:user:{}", openid), id, now.timestamp() as f64).await.map_err(|e| StorageError::Database(e.to_string()))?;
+        let _: () = conn
+            .zadd("codes:all", id, now.timestamp() as f64)
+            .await
+            .map_err(|e| StorageError::Database(e.to_string()))?;
+        let _: () = conn
+            .zadd(format!("codes:user:{}", openid), id, now.timestamp() as f64)
+            .await
+            .map_err(|e| StorageError::Database(e.to_string()))?;
 
         Ok(())
     }
@@ -212,7 +268,8 @@ impl Storage for RedisStorage {
         let mut codes = Vec::new();
         for id in ids {
             let key = format!("code:{}", id);
-            let fields: std::collections::HashMap<String, String> = conn.hgetall(&key).await.unwrap_or_default();
+            let fields: std::collections::HashMap<String, String> =
+                conn.hgetall(&key).await.unwrap_or_default();
             if fields.is_empty() {
                 continue;
             }
@@ -222,8 +279,16 @@ impl Storage for RedisStorage {
                 code: fields.get("code").cloned().unwrap_or_default(),
                 purpose: fields.get("purpose").cloned(),
                 used: fields.get("used").map(|v| v == "1").unwrap_or(false),
-                created_at: fields.get("created_at").and_then(|s| DateTime::parse_from_rfc3339(s).ok().map(|d| d.with_timezone(&Utc))),
-                expires_at: fields.get("expires_at").and_then(|s| DateTime::parse_from_rfc3339(s).ok().map(|d| d.with_timezone(&Utc))),
+                created_at: fields.get("created_at").and_then(|s| {
+                    DateTime::parse_from_rfc3339(s)
+                        .ok()
+                        .map(|d| d.with_timezone(&Utc))
+                }),
+                expires_at: fields.get("expires_at").and_then(|s| {
+                    DateTime::parse_from_rfc3339(s)
+                        .ok()
+                        .map(|d| d.with_timezone(&Utc))
+                }),
             });
         }
         Ok(codes)
@@ -231,14 +296,20 @@ impl Storage for RedisStorage {
 
     async fn count_codes(&self) -> Result<i64, StorageError> {
         let mut conn = self.conn.clone();
-        let count: i64 = conn.zcard("codes:all").await.map_err(|e| StorageError::Database(e.to_string()))?;
+        let count: i64 = conn
+            .zcard("codes:all")
+            .await
+            .map_err(|e| StorageError::Database(e.to_string()))?;
         Ok(count)
     }
 
     async fn count_today_codes(&self) -> Result<i64, StorageError> {
         let mut conn = self.conn.clone();
         let today = Self::today_start_ts();
-        let count: i64 = conn.zcount("codes:all", today, "+inf").await.map_err(|e| StorageError::Database(e.to_string()))?;
+        let count: i64 = conn
+            .zcount("codes:all", today, "+inf")
+            .await
+            .map_err(|e| StorageError::Database(e.to_string()))?;
         Ok(count)
     }
 
@@ -267,7 +338,8 @@ impl Storage for RedisStorage {
         let mut codes = Vec::new();
         for id in ids {
             let key = format!("code:{}", id);
-            let fields: std::collections::HashMap<String, String> = conn.hgetall(&key).await.unwrap_or_default();
+            let fields: std::collections::HashMap<String, String> =
+                conn.hgetall(&key).await.unwrap_or_default();
             if fields.is_empty() {
                 continue;
             }
@@ -277,14 +349,25 @@ impl Storage for RedisStorage {
                 code: fields.get("code").cloned().unwrap_or_default(),
                 purpose: fields.get("purpose").cloned(),
                 used: fields.get("used").map(|v| v == "1").unwrap_or(false),
-                created_at: fields.get("created_at").and_then(|s| DateTime::parse_from_rfc3339(s).ok().map(|d| d.with_timezone(&Utc))),
-                expires_at: fields.get("expires_at").and_then(|s| DateTime::parse_from_rfc3339(s).ok().map(|d| d.with_timezone(&Utc))),
+                created_at: fields.get("created_at").and_then(|s| {
+                    DateTime::parse_from_rfc3339(s)
+                        .ok()
+                        .map(|d| d.with_timezone(&Utc))
+                }),
+                expires_at: fields.get("expires_at").and_then(|s| {
+                    DateTime::parse_from_rfc3339(s)
+                        .ok()
+                        .map(|d| d.with_timezone(&Utc))
+                }),
             });
         }
         Ok(codes)
     }
 
-    async fn validate_code(&self, code: &str) -> Result<Option<(String, bool, DateTime<Utc>)>, StorageError> {
+    async fn validate_code(
+        &self,
+        code: &str,
+    ) -> Result<Option<(String, bool, DateTime<Utc>)>, StorageError> {
         let mut conn = self.conn.clone();
         let all_ids: Vec<i64> = conn.zrange("codes:all", 0, -1).await.unwrap_or_default();
         for id in all_ids.iter().rev() {
@@ -306,13 +389,19 @@ impl Storage for RedisStorage {
 
     async fn load_config(&self) -> Result<Option<String>, StorageError> {
         let mut conn = self.conn.clone();
-        let val: Option<String> = conn.get("app:config").await.map_err(|e| StorageError::Database(e.to_string()))?;
+        let val: Option<String> = conn
+            .get("app:config")
+            .await
+            .map_err(|e| StorageError::Database(e.to_string()))?;
         Ok(val)
     }
 
     async fn save_config(&self, json: &str) -> Result<(), StorageError> {
         let mut conn = self.conn.clone();
-        let _: () = conn.set("app:config", json).await.map_err(|e| StorageError::Database(e.to_string()))?;
+        let _: () = conn
+            .set("app:config", json)
+            .await
+            .map_err(|e| StorageError::Database(e.to_string()))?;
         Ok(())
     }
 
