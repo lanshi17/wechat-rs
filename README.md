@@ -10,6 +10,9 @@
     <a href="https://hub.docker.com/r/davepaine/wechat-rs">
       <img src="https://img.shields.io/docker/pulls/davepaine/wechat-rs" alt="Docker Pulls">
     </a>
+    <a href="https://github.com/lanshi17/wechat-rs/pkgs/container/wechat-rs">
+      <img src="https://ghcr-badge.egpl.dev/lanshi17/wechat-rs/latest_tag?trim=major&label=GHCR" alt="GHCR">
+    </a>
     <a href="https://github.com/lanshi17/wechat-rs/blob/main/LICENSE">
       <img src="https://img.shields.io/github/license/lanshi17/wechat-rs" alt="License">
     </a>
@@ -126,6 +129,7 @@ WeChat credentials, site name, and domain can be edited via the admin UI (`/admi
 |--------|------|-------------|
 | `GET` | `/wx` | WeChat server verification (signature, echostr) |
 | `POST` | `/wx` | WeChat webhook — messages and events |
+| `GET` | `/users` | Paginated user list (`?page=1&size=20`) |
 | `GET` | `/api/wechat/user?code=XXXXXX` | Validate verification code → returns OpenID |
 
 **Supported events:** `subscribe`, `unsubscribe`, `CLICK`
@@ -190,21 +194,31 @@ cargo build --release
 cp config.toml.example config.toml
 # Edit config.toml
 
-docker-compose up -d      # Pulls image from DockerHub
+docker-compose up -d      # Pulls image from Docker Hub
 docker-compose logs -f    # View logs
 docker-compose down       # Stop
 ```
 
-**Docker Hub:** https://hub.docker.com/r/davepaine/wechat-rs
+Images are published to two registries — use whichever is faster for you:
 
-### Rebuild and Push
+- **Docker Hub:** `davepaine/wechat-rs` — https://hub.docker.com/r/davepaine/wechat-rs
+- **GHCR (mirror):** `ghcr.io/lanshi17/wechat-rs`
+
+To use GHCR instead, change the image in `docker-compose.yml`:
+
+```yaml
+image: ghcr.io/lanshi17/wechat-rs:latest
+```
+
+### Build Locally
 
 ```bash
 cargo build --release
-docker-compose down && docker-compose up -d --build
-docker tag wechat-sever:latest davepaine/wechat-rs:latest
-docker push davepaine/wechat-rs:latest
+docker build -t wechat-rs:latest .
+docker-compose down && docker-compose up -d
 ```
+
+Docker images for `master` and releases are built and pushed automatically by CI.
 
 ## Deployment
 
