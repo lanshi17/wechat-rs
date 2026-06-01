@@ -7,6 +7,7 @@ mod storage;
 mod wechat;
 
 use axum::{
+    response::Redirect,
     routing::{get, post},
     Router,
 };
@@ -359,6 +360,7 @@ async fn main() {
     });
 
     let app = Router::new()
+        .route("/", get(|| async { Redirect::permanent("/admin") }))
         .route("/wx", get(wechat::verify).post(wechat::webhook))
         .route("/users", get(wechat::get_users))
         .route("/api/wechat/user", get(api::wechat_user))

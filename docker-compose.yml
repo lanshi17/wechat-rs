@@ -4,6 +4,7 @@
 
 services:
   app:
+    build: .
     image: davepaine/wechat-rs:latest
     container_name: wechat-sever
     restart: unless-stopped
