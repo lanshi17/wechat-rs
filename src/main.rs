@@ -360,10 +360,10 @@ async fn main() {
     });
 
     let app = Router::new()
-        .route("/",                  get(|| async { Redirect::permanent("/admin") }))
-        .route("/wx",                get(wechat::verify).post(wechat::webhook))
-        .route("/users",             get(wechat::get_users))
-        .route("/api/wechat/user",   get(api::wechat_user))
+        .route("/", get(|| async { Redirect::permanent("/admin") }))
+        .route("/wx", get(wechat::verify).post(wechat::webhook))
+        .route("/users", get(wechat::get_users))
+        .route("/api/wechat/user", get(api::wechat_user))
         .route("/admin/menu/create", post(admin::create_menu))
         .nest("/admin", admin::router(state.clone()))
         .with_state(state)
