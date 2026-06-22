@@ -103,6 +103,8 @@ pub fn router(state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route("/users/search", get(handlers::users_search))
         .route("/users/:openid/codes", get(handlers::user_codes))
         .route("/health", get(handlers::health))
+        .route("/monitor", get(handlers::monitor_status))
+        .route("/monitor/test-alert", post(handlers::test_alert))
         .with_state(state)
 }
 

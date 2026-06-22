@@ -33,3 +33,61 @@ database_url = "postgres://wechat:your_password_here@localhost:5432/wechat"
 
 # Redis 连接（type = "redis" 时必填）
 # redis_url = "redis://localhost:6379"
+
+# ── 监控告警 ──────────────────────────────────────────────────────────────────
+[monitor]
+# 是否启用监控
+enabled = true
+# 系统指标采集间隔（秒）
+collect_interval_secs = 30
+# 内存中保留的最大事件数
+max_events = 1000
+
+# 告警规则（可配置多条）
+[[monitor.alert_rules]]
+name                = "default"
+enabled             = true
+error_rate_threshold = 0.1   # 错误率超过 10% 触发告警
+cpu_threshold       = 0.9   # CPU 使用率超过 90% 触发告警
+memory_threshold    = 0.9   # 内存使用率超过 90% 触发告警
+cooldown_secs       = 300   # 同一规则冷却时间（秒），避免重复告警
+
+# ── 通知通道 ──────────────────────────────────────────────────────────────────
+[notify]
+# 启用的通道列表，可选: "email", "sms", "webhook"（留空则不发送通知）
+channels = []
+# 最低通知级别: "info" / "warn" / "error" / "critical"
+min_level = "error"
+
+# 邮件通知（SMTP）
+[notify.email]
+enabled      = false
+smtp_host    = "smtp.example.com"
+smtp_port    = 587
+username     = ""
+password     = ""
+from_addr    = "alert@example.com"
+from_name    = "Monitor Alert"
+to_addrs     = ["admin@example.com"]
+use_starttls = true
+
+# 短信通知（通用 HTTP API，兼容阿里云/腾讯云/Twilio 等）
+[notify.sms]
+enabled       = false
+api_url       = "https://sms.example.com/send"
+content_type  = "json"       # "json" 或 "form"
+api_key       = ""
+api_secret    = ""
+phone_numbers = ["13800138000"]
+sign_name     = ""           # 短信签名
+template_code = ""           # 模板 ID
+# 模板参数映射：key 为模板变量名，value 中可用占位符 ${level}/${title}/${content}/${time}
+# template_params = { "content" = "[${level}] ${title}: ${content}" }
+
+# Webhook 通知（支持钉钉/飞书/企业微信/Slack/通用）
+[notify.webhook]
+enabled      = false
+url          = ""
+type         = "generic"     # "generic" / "dingtalk" / "feishu" / "slack" / "wecom"
+secret       = ""            # 加签密钥（钉钉必填）
+timeout_secs = 10

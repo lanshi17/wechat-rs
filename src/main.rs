@@ -3,13 +3,18 @@
 mod admin;
 mod api;
 mod crypto;
+mod monitor;
+mod notify;
 mod storage;
 mod wechat;
 
 use axum::{
-    response::Redirect,
+    extract::State,
+    http::Request,
+    middleware::{self, Next},
+    response::{IntoResponse, Redirect, Response},
     routing::{get, post},
-    Router,
+    Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
@@ -17,6 +22,8 @@ use std::{env, fs, path::PathBuf, sync::Arc, time::Instant};
 use tokio::sync::RwLock;
 use tracing::info;
 
+use monitor::Monitor;
+use notify::{NotifyConfig, NotifyDispatcher};
 use storage::Storage;
 
 // ── TOML 配置文件结构 ─────────────────────────────────────────────────────────
@@ -29,6 +36,8 @@ pub struct FileConfig {
     pub wechat: WechatSection,
     pub upstream: UpstreamSection,
     pub storage: StorageSection,
+    pub monitor: MonitorSection,
+    pub notify: NotifyConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -70,6 +79,15 @@ pub struct StorageSection {
     pub redis_url: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MonitorSection {
+    pub enabled: bool,
+    pub collect_interval_secs: u64,
+    pub max_events: usize,
+    pub alert_rules: Vec<monitor::AlertRule>,
+}
+
 impl Default for ServerSection {
     fn default() -> Self {
         Self {
@@ -95,6 +113,17 @@ impl Default for StorageSection {
             storage_type: "postgres".into(),
             database_url: String::new(),
             redis_url: String::new(),
+        }
+    }
+}
+
+impl Default for MonitorSection {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            collect_interval_secs: 30,
+            max_events: 1000,
+            alert_rules: vec![monitor::AlertRule::default()],
         }
     }
 }
@@ -143,6 +172,7 @@ pub struct AppState {
     pub wechat_server_token: String,
     pub config_path: PathBuf,
     pub started_at: Instant,
+    pub monitor: Arc<Monitor>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -176,6 +206,67 @@ pub async fn save_config(db: &dyn Storage, cfg: &AppConfig) -> Result<(), storag
     db.save_config(&json).await
 }
 
+// ── 监控指标中间件 ────────────────────────────────────────────────────────────
+
+async fn metrics_middleware(
+    State(state): State<Arc<AppState>>,
+    request: Request<axum::body::Body>,
+    next: Next,
+) -> Response {
+    let mut guard = state.monitor.metrics().begin_request();
+    let method = request.method().clone();
+    let uri = request.uri().clone();
+
+    let response = next.run(request).await;
+
+    let status = response.status();
+    if status.is_server_error() || status.is_client_error() {
+        guard.mark_error();
+        if status.is_server_error() {
+            // 5xx 错误记录为 Error 事件
+            let mon = state.monitor.clone();
+            let path = uri.path().to_string();
+            tokio::spawn(async move {
+                mon.error_with_details(
+                    "http",
+                    &format!("{} {} → {}", method, path, status.as_u16()),
+                    serde_json::json!({
+                        "method": method.as_str(),
+                        "path": path,
+                        "status": status.as_u16(),
+                    }),
+                )
+                .await;
+            });
+        }
+    }
+
+    response
+}
+
+// ── 公开监控状态 API（无需认证，供外部监控系统拉取） ──────────────────────────
+
+async fn public_monitor_status(
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let system = state.monitor.system_snapshot().await;
+    let requests = state.monitor.metrics().snapshot().await;
+    Json(serde_json::json!({
+        "status": "ok",
+        "uptime_secs": state.started_at.elapsed().as_secs(),
+        "system": {
+            "cpu_usage": system.cpu_usage,
+            "memory_usage": system.memory_usage,
+        },
+        "requests": {
+            "total": requests.total_requests,
+            "active": requests.active_requests,
+            "error_rate": requests.error_rate(),
+            "rps": requests.requests_per_second,
+        },
+    }))
+}
+
 // ── 启动 ──────────────────────────────────────────────────────────────────────
 
 #[tokio::main]
@@ -183,7 +274,7 @@ async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "wechat_rs=info,tower_http=debug".into()),
+                .unwrap_or_else(|_| "wechat_rs=info,tower_http=warn".into()),
         )
         .init();
 
@@ -198,6 +289,27 @@ async fn main() {
     let admin_password = fc.admin.password.clone();
     let wechat_server_token = fc.upstream.server_token.clone();
     let storage_type = fc.storage.storage_type.clone();
+
+    // ── 初始化通知分发器 ──────────────────────────────────────────────────────
+    let notify_config = fc.notify.clone();
+    let dispatcher = match NotifyDispatcher::new(&notify_config) {
+        Ok(d) => d,
+        Err(e) => {
+            tracing::warn!("notify dispatcher init failed (alerts disabled): {e}");
+            NotifyDispatcher::empty()
+        }
+    };
+
+    // ── 初始化监控器 ──────────────────────────────────────────────────────────
+    let monitor_config = monitor::MonitorConfig {
+        enabled: fc.monitor.enabled,
+        collect_interval_secs: fc.monitor.collect_interval_secs,
+        max_events: fc.monitor.max_events,
+        alert_rules: fc.monitor.alert_rules.clone(),
+    };
+    let mon = Monitor::new(monitor_config, dispatcher);
+    mon.start_collector();
+    mon.info("system", "服务启动中…").await;
 
     // 从 TOML 构建 AppConfig 初始值
     let initial_cfg = AppConfig {
@@ -357,16 +469,31 @@ async fn main() {
         wechat_server_token,
         config_path,
         started_at: Instant::now(),
+        monitor: mon.clone(),
     });
+
+    // 启动完成，记录 Info 事件
+    let addr_clone = addr.clone();
+    tokio::spawn(async move {
+        mon.info("system", &format!("服务已启动，监听 {}", addr_clone)).await;
+    });
+
+    // metrics 中间件需要独立持有一份 state 引用（with_state 会 move state）
+    let metrics_state = state.clone();
 
     let app = Router::new()
         .route("/", get(|| async { Redirect::permanent("/admin") }))
         .route("/wx", get(wechat::verify).post(wechat::webhook))
         .route("/users", get(wechat::get_users))
         .route("/api/wechat/user", get(api::wechat_user))
+        .route("/api/monitor/status", get(public_monitor_status))
         .route("/admin/menu/create", post(admin::create_menu))
         .nest("/admin", admin::router(state.clone()))
         .with_state(state)
+        .layer(middleware::from_fn_with_state(
+            metrics_state,
+            metrics_middleware,
+        ))
         .layer(tower_http::trace::TraceLayer::new_for_http())
         .layer(tower_http::cors::CorsLayer::permissive());
 
