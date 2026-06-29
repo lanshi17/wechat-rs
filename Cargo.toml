@@ -27,6 +27,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 sysinfo = "0.30"
 redis = { version = "0.25", features = ["tokio-comp", "connection-manager"] }
 async-trait = "0.1"
+lettre = { version = "0.11", default-features = false, features = ["tokio1-rustls", "smtp-transport", "builder", "hostname", "ring", "rustls-native-certs"] }
 
 [profile.release]
 opt-level = 3

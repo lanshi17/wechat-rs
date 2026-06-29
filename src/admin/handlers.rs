@@ -296,3 +296,43 @@ pub async fn health(State(state): State<Arc<AppState>>, headers: HeaderMap) -> i
     }))
     .into_response()
 }
+
+// ── 监控相关端点 ──────────────────────────────────────────────────────────────
+
+pub async fn monitor_status(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    auth!(state, headers);
+    let system = state.monitor.system_snapshot().await;
+    let requests = state.monitor.metrics().snapshot().await;
+    let recent_events = state.monitor.recent_events(100).await;
+    Json(serde_json::json!({
+        "system": system,
+        "requests": requests,
+        "recent_events": recent_events,
+    }))
+    .into_response()
+}
+
+pub async fn test_alert(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    auth!(state, headers);
+    use crate::notify::AlertLevel;
+    state
+        .monitor
+        .event(
+            AlertLevel::Error,
+            "test",
+            "这是一条管理后台触发的测试告警消息",
+            serde_json::json!({"triggered_by": "admin_test", "test": true}),
+        )
+        .await;
+    Json(serde_json::json!({
+        "success": true,
+        "message": "测试告警已触发，请检查配置的通知通道"
+    }))
+    .into_response()
+}
