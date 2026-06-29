@@ -239,7 +239,7 @@ impl Monitor {
             memory_total,
             memory_usage,
             uptime_secs: self.started_at.elapsed().as_secs(),
-            load_avg: load_avg as f64,
+            load_avg,
         }
     }
 

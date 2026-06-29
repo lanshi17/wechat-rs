@@ -9,10 +9,11 @@ use super::{AlertMessage, Notifier, NotifyError};
 
 // ── Webhook 类型 ──────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum WebhookType {
     /// 通用 JSON（POST 原始消息 JSON）
+    #[default]
     Generic,
     /// 钉钉机器人
     DingTalk,
@@ -22,12 +23,6 @@ pub enum WebhookType {
     Slack,
     /// 企业微信机器人
     WeCom,
-}
-
-impl Default for WebhookType {
-    fn default() -> Self {
-        WebhookType::Generic
-    }
 }
 
 // ── Webhook 配置 ──────────────────────────────────────────────────────────────
