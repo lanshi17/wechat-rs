@@ -159,8 +159,11 @@ impl NotifyDispatcher {
                 "email" => {
                     if config.email.enabled {
                         let n = email::EmailNotifier::new(config.email.clone())?;
-                        tracing::info!("notify: email channel enabled (smtp={}:{})",
-                            config.email.smtp_host, config.email.smtp_port);
+                        tracing::info!(
+                            "notify: email channel enabled (smtp={}:{})",
+                            config.email.smtp_host,
+                            config.email.smtp_port
+                        );
                         notifiers.push(Box::new(n));
                     }
                 }
@@ -174,7 +177,10 @@ impl NotifyDispatcher {
                 "webhook" => {
                     if config.webhook.enabled {
                         let n = webhook::WebhookNotifier::new(config.webhook.clone())?;
-                        tracing::info!("notify: webhook channel enabled (url={})", config.webhook.url);
+                        tracing::info!(
+                            "notify: webhook channel enabled (url={})",
+                            config.webhook.url
+                        );
                         notifiers.push(Box::new(n));
                     }
                 }

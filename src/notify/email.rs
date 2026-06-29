@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{AlertMessage, NotifyError, Notifier};
+use super::{AlertMessage, Notifier, NotifyError};
 
 // ── 邮件配置 ──────────────────────────────────────────────────────────────────
 
@@ -60,7 +60,9 @@ impl EmailNotifier {
             return Err(NotifyError::Config("from_addr is required".into()));
         }
         if config.to_addrs.is_empty() {
-            return Err(NotifyError::Config("at least one to_addr is required".into()));
+            return Err(NotifyError::Config(
+                "at least one to_addr is required".into(),
+            ));
         }
         Ok(Self { config })
     }
@@ -102,13 +104,16 @@ impl EmailNotifier {
 
         use lettre::message::Mailbox;
 
-        let from_mailbox: Mailbox = format!("{} <{}>", self.config.from_name, self.config.from_addr)
-            .parse()
-            .map_err(|e| NotifyError::Config(format!("invalid from address: {e}")))?;
+        let from_mailbox: Mailbox =
+            format!("{} <{}>", self.config.from_name, self.config.from_addr)
+                .parse()
+                .map_err(|e| NotifyError::Config(format!("invalid from address: {e}")))?;
 
-        let mut builder = MessageBuilder::new()
-            .from(from_mailbox)
-            .subject(format!("[{}] {}", msg.level.as_str(), msg.title));
+        let mut builder = MessageBuilder::new().from(from_mailbox).subject(format!(
+            "[{}] {}",
+            msg.level.as_str(),
+            msg.title
+        ));
 
         for addr in &self.config.to_addrs {
             let to_mailbox: Mailbox = addr
@@ -149,10 +154,7 @@ impl Notifier for EmailNotifier {
 
         let email = self.build_email(msg)?;
 
-        let creds = Credentials::new(
-            self.config.username.clone(),
-            self.config.password.clone(),
-        );
+        let creds = Credentials::new(self.config.username.clone(), self.config.password.clone());
 
         // use_starttls = true → STARTTLS（端口 587，标准加密提交）
         // use_starttls = false → 明文/机会TLS（用于内网中继等场景）

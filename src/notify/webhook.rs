@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use super::{AlertMessage, NotifyError, Notifier};
+use super::{AlertMessage, Notifier, NotifyError};
 
 // ── Webhook 类型 ──────────────────────────────────────────────────────────────
 
@@ -247,9 +247,7 @@ impl Notifier for WebhookNotifier {
                         .get("msg")
                         .and_then(|v| v.as_str())
                         .unwrap_or("unknown error");
-                    return Err(NotifyError::Network(format!(
-                        "webhook code={code}: {msg}"
-                    )));
+                    return Err(NotifyError::Network(format!("webhook code={code}: {msg}")));
                 }
             }
         }
@@ -411,5 +409,7 @@ fn sha256(data: &[u8]) -> [u8; 32] {
 
 fn urlencode(s: &str) -> String {
     // 只对 base64 中的 +/= 做编码
-    s.replace('+', "%2B").replace('/', "%2F").replace('=', "%3D")
+    s.replace('+', "%2B")
+        .replace('/', "%2F")
+        .replace('=', "%3D")
 }

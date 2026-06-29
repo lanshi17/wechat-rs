@@ -133,7 +133,13 @@ impl Monitor {
     }
 
     /// 记录一条监控事件
-    pub async fn event(&self, level: AlertLevel, category: &str, message: &str, details: serde_json::Value) {
+    pub async fn event(
+        &self,
+        level: AlertLevel,
+        category: &str,
+        message: &str,
+        details: serde_json::Value,
+    ) {
         let evt = MonitorEvent {
             timestamp: Utc::now(),
             level,
@@ -169,27 +175,42 @@ impl Monitor {
 
     /// 快捷方法：记录 Info 事件
     pub async fn info(&self, category: &str, message: &str) {
-        self.event(AlertLevel::Info, category, message, serde_json::json!({})).await;
+        self.event(AlertLevel::Info, category, message, serde_json::json!({}))
+            .await;
     }
 
     /// 快捷方法：记录 Warn 事件
     pub async fn warn(&self, category: &str, message: &str) {
-        self.event(AlertLevel::Warn, category, message, serde_json::json!({})).await;
+        self.event(AlertLevel::Warn, category, message, serde_json::json!({}))
+            .await;
     }
 
     /// 快捷方法：记录 Error 事件
     pub async fn error(&self, category: &str, message: &str) {
-        self.event(AlertLevel::Error, category, message, serde_json::json!({})).await;
+        self.event(AlertLevel::Error, category, message, serde_json::json!({}))
+            .await;
     }
 
     /// 快捷方法：记录 Error 事件并附带详情
-    pub async fn error_with_details(&self, category: &str, message: &str, details: serde_json::Value) {
-        self.event(AlertLevel::Error, category, message, details).await;
+    pub async fn error_with_details(
+        &self,
+        category: &str,
+        message: &str,
+        details: serde_json::Value,
+    ) {
+        self.event(AlertLevel::Error, category, message, details)
+            .await;
     }
 
     /// 快捷方法：记录 Critical 事件
     pub async fn critical(&self, category: &str, message: &str) {
-        self.event(AlertLevel::Critical, category, message, serde_json::json!({})).await;
+        self.event(
+            AlertLevel::Critical,
+            category,
+            message,
+            serde_json::json!({}),
+        )
+        .await;
     }
 
     /// 获取最近事件列表

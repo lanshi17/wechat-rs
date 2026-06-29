@@ -6,7 +6,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use super::{AlertMessage, NotifyError, Notifier};
+use super::{AlertMessage, Notifier, NotifyError};
 
 // ── 短信配置 ──────────────────────────────────────────────────────────────────
 
@@ -70,7 +70,9 @@ impl SmsNotifier {
             return Err(NotifyError::Config("sms api_url is required".into()));
         }
         if config.phone_numbers.is_empty() {
-            return Err(NotifyError::Config("at least one phone_number is required".into()));
+            return Err(NotifyError::Config(
+                "at least one phone_number is required".into(),
+            ));
         }
 
         let client = reqwest::Client::builder()
@@ -95,12 +97,7 @@ impl SmsNotifier {
         }
         // 若没有配置模板参数，默认把 content 放在 "content" 字段
         if result.is_empty() {
-            let text = format!(
-                "[{}] {}\n{}",
-                msg.level.as_str(),
-                msg.title,
-                msg.content
-            );
+            let text = format!("[{}] {}\n{}", msg.level.as_str(), msg.title, msg.content);
             result.insert("content".into(), text);
         }
         result
@@ -143,11 +140,9 @@ impl SmsNotifier {
                 if !self.config.api_secret.is_empty() {
                     body["api_secret"] = serde_json::json!(self.config.api_secret);
                 }
-                body["params"] = serde_json::to_value(&template_params)
-                    .unwrap_or(serde_json::json!({}));
-                self.client
-                    .post(&self.config.api_url)
-                    .json(&body)
+                body["params"] =
+                    serde_json::to_value(&template_params).unwrap_or(serde_json::json!({}));
+                self.client.post(&self.config.api_url).json(&body)
             }
         };
 
@@ -156,7 +151,8 @@ impl SmsNotifier {
             req_builder = req_builder.header("X-API-Key", &self.config.api_key);
         }
         if !self.config.api_secret.is_empty() {
-            req_builder = req_builder.basic_auth(&self.config.api_key, Some(&self.config.api_secret));
+            req_builder =
+                req_builder.basic_auth(&self.config.api_key, Some(&self.config.api_secret));
         }
         for (k, v) in &self.config.extra_headers {
             req_builder = req_builder.header(k, v);
@@ -171,7 +167,9 @@ impl SmsNotifier {
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
             if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-                return Err(NotifyError::RateLimited(format!("sms rate limited: {body}")));
+                return Err(NotifyError::RateLimited(format!(
+                    "sms rate limited: {body}"
+                )));
             }
             return Err(NotifyError::Network(format!(
                 "sms api returned {status}: {body}"
@@ -191,9 +189,12 @@ impl Notifier for SmsNotifier {
     async fn send(&self, msg: &AlertMessage) -> Result<(), NotifyError> {
         // Critical/Error 级别群发给所有手机号；Warn 只发给第一个（如有）
         let phones: Vec<&str> = match msg.level {
-            super::AlertLevel::Critical | super::AlertLevel::Error => {
-                self.config.phone_numbers.iter().map(|s| s.as_str()).collect()
-            }
+            super::AlertLevel::Critical | super::AlertLevel::Error => self
+                .config
+                .phone_numbers
+                .iter()
+                .map(|s| s.as_str())
+                .collect(),
             _ => self
                 .config
                 .phone_numbers

@@ -246,9 +246,7 @@ async fn metrics_middleware(
 
 // ── 公开监控状态 API（无需认证，供外部监控系统拉取） ──────────────────────────
 
-async fn public_monitor_status(
-    State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
+async fn public_monitor_status(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let system = state.monitor.system_snapshot().await;
     let requests = state.monitor.metrics().snapshot().await;
     Json(serde_json::json!({
@@ -475,7 +473,8 @@ async fn main() {
     // 启动完成，记录 Info 事件
     let addr_clone = addr.clone();
     tokio::spawn(async move {
-        mon.info("system", &format!("服务已启动，监听 {}", addr_clone)).await;
+        mon.info("system", &format!("服务已启动，监听 {}", addr_clone))
+            .await;
     });
 
     // metrics 中间件需要独立持有一份 state 引用（with_state 会 move state）
