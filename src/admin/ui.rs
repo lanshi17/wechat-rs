@@ -253,7 +253,7 @@ pub const ADMIN_HTML: &str = r#"<!DOCTYPE html>
       <span class="ico">◈</span> 系统状态
     </a>
   </nav>
-  <div class="aside-footer">v0.3.0 · PostgreSQL</div>
+  <div class="aside-footer">v0.4.0 · PostgreSQL</div>
 </aside>
 
 <!-- 主区域 -->
@@ -506,7 +506,7 @@ pub const ADMIN_HTML: &str = r#"<!DOCTYPE html>
       <h3>服务信息</h3>
       <div style="font-size:13px;color:var(--ink2);line-height:2.2">
         <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--paper2)">
-          <span style="color:var(--ink3)">服务版本</span><span class="mono">v0.3.0</span>
+          <span style="color:var(--ink3)">服务版本</span><span class="mono">v0.4.0</span>
         </div>
         <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--paper2)">
           <span style="color:var(--ink3)">监听端口</span><span class="mono">3317</span>
