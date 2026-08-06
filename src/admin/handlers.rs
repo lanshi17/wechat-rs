@@ -195,6 +195,7 @@ pub async fn users(
     Query(p): Query<PageParams>,
 ) -> impl IntoResponse {
     auth!(state, headers);
+    let p = p.normalized();
     match state.db.list_users(p.page, p.size).await {
         Ok(u) => Json(u).into_response(),
         Err(e) => {
@@ -235,6 +236,7 @@ pub async fn codes_list(
     Query(p): Query<PageParams>,
 ) -> impl IntoResponse {
     auth!(state, headers);
+    let p = p.normalized();
     let codes = match state.db.list_codes(p.page, p.size).await {
         Ok(c) => c,
         Err(e) => {

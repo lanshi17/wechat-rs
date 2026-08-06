@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use super::{AlertMessage, Notifier, NotifyError};
+use super::{request_error, AlertMessage, Notifier, NotifyError};
 
 // ── Webhook 类型 ──────────────────────────────────────────────────────────────
 
@@ -213,7 +213,7 @@ impl Notifier for WebhookNotifier {
         let resp = req
             .send()
             .await
-            .map_err(|e| NotifyError::Network(format!("webhook request failed: {e}")))?;
+            .map_err(|error| request_error("webhook request failed", error))?;
 
         let status = resp.status();
         if !status.is_success() {
