@@ -531,7 +531,7 @@ pub const ADMIN_HTML: &str = r#"<!DOCTYPE html>
 
 <script>
 const BASE = '';
-let token = localStorage.getItem('admin_token') || '';
+let token = sessionStorage.getItem('admin_token') || '';
 let curPage = 1;
 const pageSize = 20;
 let codePage = 1;
@@ -543,7 +543,7 @@ window.onload = async () => {
     const ok = await testToken();
     if (ok) { showApp(); return; }
     token = '';
-    localStorage.removeItem('admin_token');
+    sessionStorage.removeItem('admin_token');
   }
   document.getElementById('login-page').style.display = 'flex';
   document.getElementById('pw-input').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
@@ -576,7 +576,7 @@ async function doLogin() {
   if (r.ok) {
     const d = await r.json();
     token = d.token;
-    localStorage.setItem('admin_token', token);
+    sessionStorage.setItem('admin_token', token);
     showApp();
   } else {
     document.getElementById('login-err').textContent = '密码错误，请重试';
@@ -585,7 +585,7 @@ async function doLogin() {
 
 function logout() {
   token = '';
-  localStorage.removeItem('admin_token');
+  sessionStorage.removeItem('admin_token');
   location.reload();
 }
 
@@ -619,30 +619,105 @@ async function loadDetailedStats() {
   document.getElementById('stat-expired-codes').textContent = r.expired_codes.toLocaleString();
 }
 
+function emptyTableRow(columnCount, message) {
+  const row = document.createElement('tr');
+  const cell = document.createElement('td');
+  cell.colSpan = columnCount;
+  cell.style.cssText = 'text-align:center;color:var(--ink3);padding:32px';
+  cell.textContent = message;
+  row.appendChild(cell);
+  return row;
+}
+
+function textCell(value, className = '', cssText = '') {
+  const cell = document.createElement('td');
+  if (className) cell.className = className;
+  if (cssText) cell.style.cssText = cssText;
+  cell.textContent = value == null ? '' : String(value);
+  return cell;
+}
+
+function codeStatusBadge(code, now) {
+  const badge = document.createElement('span');
+  badge.className = 'badge';
+  if (code.used) {
+    badge.classList.add('badge-on');
+    badge.textContent = '已使用';
+  } else if (new Date(code.expires_at) < now) {
+    badge.classList.add('badge-off');
+    badge.textContent = '已过期';
+  } else {
+    badge.style.cssText = 'background:var(--gold-l);color:var(--gold)';
+    badge.textContent = '有效';
+  }
+  return badge;
+}
+
+function renderCodeRows(tbody, codes) {
+  const now = new Date();
+  const fragment = document.createDocumentFragment();
+  for (const code of codes) {
+    const row = document.createElement('tr');
+    row.appendChild(textCell(code.id, '', 'color:var(--ink3)'));
+    row.appendChild(textCell(code.openid, 'openid-cell'));
+    row.appendChild(textCell(code.code, 'mono', 'font-weight:600;letter-spacing:2px'));
+
+    const statusCell = document.createElement('td');
+    statusCell.appendChild(codeStatusBadge(code, now));
+    row.appendChild(statusCell);
+    row.appendChild(textCell(fmtDate(code.created_at), '', 'color:var(--ink3);font-size:12px'));
+    row.appendChild(textCell(fmtDate(code.expires_at), '', 'color:var(--ink3);font-size:12px'));
+    fragment.appendChild(row);
+  }
+  tbody.replaceChildren(fragment);
+}
+
+function renderUserRows(tbody, users) {
+  const fragment = document.createDocumentFragment();
+  for (const user of users) {
+    const row = document.createElement('tr');
+    row.appendChild(textCell(user.openid, 'openid-cell'));
+
+    const nicknameCell = textCell(user.nickname || '—');
+    if (!user.nickname) nicknameCell.style.color = 'var(--ink3)';
+    row.appendChild(nicknameCell);
+
+    const subscribeCell = document.createElement('td');
+    const badge = document.createElement('span');
+    badge.className = `badge ${user.subscribe ? 'badge-on' : 'badge-off'}`;
+    badge.textContent = user.subscribe ? '已关注' : '已取关';
+    subscribeCell.appendChild(badge);
+    row.appendChild(subscribeCell);
+
+    row.appendChild(textCell(fmtDate(user.created_at), '', 'color:var(--ink3);font-size:12px'));
+    row.appendChild(textCell(fmtDate(user.updated_at), '', 'color:var(--ink3);font-size:12px'));
+
+    const actionCell = document.createElement('td');
+    const link = document.createElement('a');
+    link.href = '#';
+    link.textContent = '查看验证码';
+    link.style.cssText = 'color:var(--green);font-size:12px;text-decoration:none;cursor:pointer';
+    link.addEventListener('click', event => {
+      event.preventDefault();
+      viewUserCodes(user.openid);
+    });
+    actionCell.appendChild(link);
+    row.appendChild(actionCell);
+    fragment.appendChild(row);
+  }
+  tbody.replaceChildren(fragment);
+}
+
 async function loadCodes() {
   const r = await apiFetch(`/admin/codes?page=${codePage}&size=${codePageSize}`);
   const tbody = document.getElementById('codes-tbody');
   if (!r || !r.codes || !r.codes.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--ink3);padding:32px">暂无数据</td></tr>';
+    tbody.replaceChildren(emptyTableRow(6, '暂无数据'));
     document.getElementById('codes-next-btn').disabled = true;
     document.getElementById('codes-total-info').textContent = `共 ${r ? r.total : 0} 条`;
     return;
   }
-  const now = new Date();
-  tbody.innerHTML = r.codes.map(c => {
-    let badge;
-    if (c.used) badge = '<span class="badge badge-on">已使用</span>';
-    else if (new Date(c.expires_at) < now) badge = '<span class="badge badge-off">已过期</span>';
-    else badge = '<span class="badge" style="background:var(--gold-l);color:var(--gold)">有效</span>';
-    return `<tr>
-      <td style="color:var(--ink3)">${c.id}</td>
-      <td class="openid-cell">${c.openid}</td>
-      <td class="mono" style="font-weight:600;letter-spacing:2px">${c.code}</td>
-      <td>${badge}</td>
-      <td style="color:var(--ink3);font-size:12px">${fmtDate(c.created_at)}</td>
-      <td style="color:var(--ink3);font-size:12px">${fmtDate(c.expires_at)}</td>
-    </tr>`;
-  }).join('');
+  renderCodeRows(tbody, r.codes);
   document.getElementById('codes-prev-btn').disabled = codePage <= 1;
   document.getElementById('codes-next-btn').disabled = r.codes.length < codePageSize;
   document.getElementById('codes-page-info').textContent = `第 ${codePage} 页`;
@@ -663,9 +738,10 @@ async function loadHealth() {
   document.getElementById('health-memory').textContent = r.memory_used_mb + ' MB';
   document.getElementById('health-memory-detail').textContent = '总计 ' + r.memory_total_mb + ' MB (' + Math.round(r.memory_used_mb/r.memory_total_mb*100) + '%)';
   const dbEl = document.getElementById('health-db');
-  dbEl.innerHTML = r.db_connected
-    ? '<span style="color:var(--green)">● 已连接</span>'
-    : '<span style="color:var(--red)">● 断开</span>';
+  const dbStatus = document.createElement('span');
+  dbStatus.style.color = r.db_connected ? 'var(--green)' : 'var(--red)';
+  dbStatus.textContent = r.db_connected ? '● 已连接' : '● 断开';
+  dbEl.replaceChildren(dbStatus);
   document.getElementById('health-db-detail').textContent = r.db_connected ? '已连接' : '未连接';
   document.getElementById('health-db-addr').textContent = r.db_connected ? 'PostgreSQL' : '—';
   document.getElementById('health-db-conns').textContent = r.db_connections + ' 个连接';
@@ -719,19 +795,11 @@ async function loadUsers() {
   const r = await apiFetch(`/admin/users?page=${curPage}&size=${pageSize}`);
   const tbody = document.getElementById('user-tbody');
   if (!r || !r.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--ink3);padding:32px">暂无数据</td></tr>';
+    tbody.replaceChildren(emptyTableRow(6, '暂无数据'));
     document.getElementById('next-btn').disabled = true;
     return;
   }
-  tbody.innerHTML = r.map(u => `
-    <tr>
-      <td class="openid-cell">${u.openid}</td>
-      <td>${u.nickname || '<span style="color:var(--ink3)">—</span>'}</td>
-      <td><span class="badge ${u.subscribe ? 'badge-on':'badge-off'}">${u.subscribe ? '已关注':'已取关'}</span></td>
-      <td style="color:var(--ink3);font-size:12px">${fmtDate(u.created_at)}</td>
-      <td style="color:var(--ink3);font-size:12px">${fmtDate(u.updated_at)}</td>
-      <td><a onclick="viewUserCodes('${u.openid}')" style="color:var(--green);font-size:12px;text-decoration:none;cursor:pointer">查看验证码</a></td>
-    </tr>`).join('');
+  renderUserRows(tbody, r);
   document.getElementById('prev-btn').disabled = curPage <= 1;
   document.getElementById('next-btn').disabled = r.length < pageSize;
   document.getElementById('page-info').textContent = `第 ${curPage} 页`;
@@ -746,21 +814,13 @@ async function searchUsers() {
   const r = await apiFetch(`/admin/users/search?q=${encodeURIComponent(q)}`);
   const tbody = document.getElementById('user-tbody');
   if (!r || !r.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--ink3);padding:32px">未找到匹配用户</td></tr>';
+    tbody.replaceChildren(emptyTableRow(6, '未找到匹配用户'));
     document.getElementById('prev-btn').disabled = true;
     document.getElementById('next-btn').disabled = true;
     document.getElementById('page-info').textContent = '搜索结果';
     return;
   }
-  tbody.innerHTML = r.map(u => `
-    <tr>
-      <td class="openid-cell">${u.openid}</td>
-      <td>${u.nickname || '<span style="color:var(--ink3)">—</span>'}</td>
-      <td><span class="badge ${u.subscribe ? 'badge-on':'badge-off'}">${u.subscribe ? '已关注':'已取关'}</span></td>
-      <td style="color:var(--ink3);font-size:12px">${fmtDate(u.created_at)}</td>
-      <td style="color:var(--ink3);font-size:12px">${fmtDate(u.updated_at)}</td>
-      <td><a onclick="viewUserCodes('${u.openid}')" style="color:var(--green);font-size:12px;text-decoration:none;cursor:pointer">查看验证码</a></td>
-    </tr>`).join('');
+  renderUserRows(tbody, r);
   document.getElementById('prev-btn').disabled = true;
   document.getElementById('next-btn').disabled = true;
   document.getElementById('page-info').textContent = `搜索: ${r.length} 条结果`;
@@ -777,28 +837,14 @@ async function viewUserCodes(openid) {
   showPage('codes');
   const tbody = document.getElementById('codes-tbody');
   if (!r || !r.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--ink3);padding:32px">该用户暂无验证码记录</td></tr>';
+    tbody.replaceChildren(emptyTableRow(6, '该用户暂无验证码记录'));
     document.getElementById('codes-prev-btn').disabled = true;
     document.getElementById('codes-next-btn').disabled = true;
     document.getElementById('codes-page-info').textContent = `用户: ${openid.substring(0, 12)}…`;
     document.getElementById('codes-total-info').textContent = '共 0 条';
     return;
   }
-  const now = new Date();
-  tbody.innerHTML = r.map(c => {
-    let badge;
-    if (c.used) badge = '<span class="badge badge-on">已使用</span>';
-    else if (new Date(c.expires_at) < now) badge = '<span class="badge badge-off">已过期</span>';
-    else badge = '<span class="badge" style="background:var(--gold-l);color:var(--gold)">有效</span>';
-    return `<tr>
-      <td style="color:var(--ink3)">${c.id}</td>
-      <td class="openid-cell">${c.openid}</td>
-      <td class="mono" style="font-weight:600;letter-spacing:2px">${c.code}</td>
-      <td>${badge}</td>
-      <td style="color:var(--ink3);font-size:12px">${fmtDate(c.created_at)}</td>
-      <td style="color:var(--ink3);font-size:12px">${fmtDate(c.expires_at)}</td>
-    </tr>`;
-  }).join('');
+  renderCodeRows(tbody, r);
   document.getElementById('codes-prev-btn').disabled = true;
   document.getElementById('codes-next-btn').disabled = true;
   document.getElementById('codes-page-info').textContent = `用户: ${openid.substring(0, 12)}…`;
@@ -870,7 +916,8 @@ async function createMenu() {
   const btn = document.getElementById('create-menu-btn');
   const result = document.getElementById('menu-result');
   btn.disabled = true;
-  result.innerHTML = '<span style="color:var(--ink3)">正在创建菜单…</span>';
+  result.style.color = 'var(--ink3)';
+  result.textContent = '正在创建菜单…';
 
   try {
     const r = await fetch(BASE + '/admin/menu/create', {
@@ -879,14 +926,20 @@ async function createMenu() {
     });
     const d = await r.json();
     if (d.success) {
-      result.innerHTML = '<span style="color:var(--green)">✓ ' + d.message + '</span>';
+      result.style.color = 'var(--green)';
+      result.textContent = d.message;
+      result.prepend(document.createTextNode('✓ '));
       toast('菜单创建成功', 'ok');
     } else {
-      result.innerHTML = '<span style="color:var(--red)">✗ ' + d.message + '</span>';
+      result.style.color = 'var(--red)';
+      result.textContent = d.message;
+      result.prepend(document.createTextNode('✗ '));
       toast('菜单创建失败', 'err');
     }
   } catch (e) {
-    result.innerHTML = '<span style="color:var(--red)">请求失败: ' + e.message + '</span>';
+    result.style.color = 'var(--red)';
+    result.textContent = e.message;
+    result.prepend(document.createTextNode('请求失败: '));
     toast('请求失败', 'err');
   }
   btn.disabled = false;
@@ -922,4 +975,42 @@ function toast(msg, type) {
 pub fn admin_html() -> String {
     let version = concat!("v", env!("CARGO_PKG_VERSION"));
     ADMIN_HTML.replace("__VERSION__", version)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ADMIN_HTML;
+
+    #[test]
+    fn api_values_are_not_interpolated_into_html_or_inline_handlers() {
+        assert!(
+            !ADMIN_HTML.contains("innerHTML"),
+            "admin UI must build dynamic content with safe DOM APIs"
+        );
+        for unsafe_fragment in [
+            "${c.openid}",
+            "${c.code}",
+            "${u.openid}",
+            "${u.nickname}",
+            "' + d.message + '",
+            "' + e.message + '",
+            "onclick=\"viewUserCodes('${u.openid}')\"",
+        ] {
+            assert!(
+                !ADMIN_HTML.contains(unsafe_fragment),
+                "admin UI contains an unsafe dynamic HTML fragment: {unsafe_fragment}"
+            );
+        }
+
+        assert!(ADMIN_HTML.contains(".addEventListener('click',"));
+        assert!(ADMIN_HTML.contains("textContent = d.message"));
+    }
+
+    #[test]
+    fn admin_jwt_uses_session_scoped_storage() {
+        assert!(!ADMIN_HTML.contains("localStorage"));
+        assert!(ADMIN_HTML.contains("sessionStorage.getItem('admin_token')"));
+        assert!(ADMIN_HTML.contains("sessionStorage.setItem('admin_token', token)"));
+        assert!(ADMIN_HTML.contains("sessionStorage.removeItem('admin_token')"));
+    }
 }

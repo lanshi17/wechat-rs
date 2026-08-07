@@ -6,7 +6,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use super::{AlertMessage, Notifier, NotifyError};
+use super::{request_error, AlertMessage, Notifier, NotifyError};
 
 // ── 短信配置 ──────────────────────────────────────────────────────────────────
 
@@ -161,7 +161,7 @@ impl SmsNotifier {
         let resp = req_builder
             .send()
             .await
-            .map_err(|e| NotifyError::Network(format!("sms request failed: {e}")))?;
+            .map_err(|error| request_error("sms request failed", error))?;
 
         let status = resp.status();
         if !status.is_success() {

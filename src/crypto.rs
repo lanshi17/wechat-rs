@@ -49,7 +49,11 @@ fn derive_key_iv(encoding_aes_key: &str) -> Result<([u8; 32], [u8; 16]), String>
 }
 
 /// AES-CBC 解密微信安全模式消息
-pub fn wx_decrypt(ciphertext_b64: &str, encoding_aes_key: &str) -> Result<String, String> {
+pub fn wx_decrypt(
+    ciphertext_b64: &str,
+    encoding_aes_key: &str,
+    expected_appid: &str,
+) -> Result<String, String> {
     let (key, iv) = derive_key_iv(encoding_aes_key)?;
     let ciphertext = decode_base64_ignore_padding(ciphertext_b64)
         .map_err(|e| format!("base64 decode ciphertext: {e}"))?;
@@ -63,19 +67,29 @@ pub fn wx_decrypt(ciphertext_b64: &str, encoding_aes_key: &str) -> Result<String
         return Err("empty plaintext".into());
     }
     let pad_byte = *pt.last().unwrap();
-    if pad_byte == 0 || pad_byte > 32 {
+    if pad_byte == 0 || pad_byte > 32 || pad_byte as usize > pt.len() {
         return Err(format!("invalid padding byte: {pad_byte}"));
     }
-    let pt = &pt[..pt.len() - pad_byte as usize];
+    let padding_start = pt.len() - pad_byte as usize;
+    if !pt[padding_start..].iter().all(|byte| *byte == pad_byte) {
+        return Err("invalid padding bytes".into());
+    }
+    let pt = &pt[..padding_start];
 
     if pt.len() < 20 {
         return Err("plaintext too short".into());
     }
     let msg_len = u32::from_be_bytes([pt[16], pt[17], pt[18], pt[19]]) as usize;
-    if pt.len() < 20 + msg_len {
+    let message_end = 20usize
+        .checked_add(msg_len)
+        .ok_or_else(|| "message length overflow".to_string())?;
+    if pt.len() < message_end {
         return Err("plaintext too short for msg_len".into());
     }
-    let msg = std::str::from_utf8(&pt[20..20 + msg_len]).map_err(|e| format!("utf8 error: {e}"))?;
+    if pt[message_end..] != *expected_appid.as_bytes() {
+        return Err("appid mismatch".into());
+    }
+    let msg = std::str::from_utf8(&pt[20..message_end]).map_err(|e| format!("utf8 error: {e}"))?;
     Ok(msg.to_string())
 }
 
@@ -93,7 +107,7 @@ pub fn wx_encrypt(plaintext: &str, encoding_aes_key: &str, appid: &str) -> Resul
     buf.extend_from_slice(appid_bytes);
 
     let pad_len = 32 - (buf.len() % 32);
-    buf.extend(std::iter::repeat_n(pad_len as u8, pad_len));
+    buf.resize(buf.len() + pad_len, pad_len as u8);
 
     let msg_len = buf.len();
     let ct = Aes256CbcEnc::new(&key.into(), &iv.into())
@@ -110,9 +124,83 @@ pub fn make_safe_signature(token: &str, timestamp: &str, nonce: &str, encrypt_ms
     hex::encode(Sha1::digest(parts.concat().as_bytes()))
 }
 
+pub fn constant_time_eq(expected: &[u8], presented: &[u8]) -> bool {
+    let max_len = expected.len().max(presented.len());
+    let mut diff = expected.len() ^ presented.len();
+    for index in 0..max_len {
+        let left = expected.get(index).copied().unwrap_or_default();
+        let right = presented.get(index).copied().unwrap_or_default();
+        diff |= usize::from(left ^ right);
+    }
+    diff == 0
+}
+
 /// 明文模式签名验证: SHA1(sort([token, timestamp, nonce]))
 pub fn check_signature(token: &str, timestamp: &str, nonce: &str, sig: &str) -> bool {
     let mut parts = [token, timestamp, nonce];
     parts.sort_unstable();
-    hex::encode(Sha1::digest(parts.concat().as_bytes())) == sig
+    let expected = hex::encode(Sha1::digest(parts.concat().as_bytes()));
+    constant_time_eq(expected.as_bytes(), sig.as_bytes())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_encoding_aes_key() -> String {
+        B64.encode([7_u8; 32]).trim_end_matches('=').to_string()
+    }
+
+    fn encrypt_raw(plaintext: &[u8], encoding_aes_key: &str) -> String {
+        let (key, iv) = derive_key_iv(encoding_aes_key).expect("valid test key");
+        let mut buf = plaintext.to_vec();
+        let len = buf.len();
+        let ciphertext = Aes256CbcEnc::new(&key.into(), &iv.into())
+            .encrypt_padded_mut::<cbc::cipher::block_padding::NoPadding>(&mut buf, len)
+            .expect("block-aligned plaintext");
+        B64.encode(ciphertext)
+    }
+
+    fn raw_wechat_plaintext(message: &str, appid: &str) -> Vec<u8> {
+        let mut plaintext = vec![3_u8; 16];
+        plaintext.extend_from_slice(&(message.len() as u32).to_be_bytes());
+        plaintext.extend_from_slice(message.as_bytes());
+        plaintext.extend_from_slice(appid.as_bytes());
+        let pad_len = 32 - plaintext.len() % 32;
+        plaintext.resize(plaintext.len() + pad_len, pad_len as u8);
+        plaintext
+    }
+
+    #[test]
+    fn decrypt_rejects_padding_longer_than_plaintext_without_panicking() {
+        let key = test_encoding_aes_key();
+        let mut malformed = [0_u8; 16];
+        malformed[15] = 17;
+        let ciphertext = encrypt_raw(&malformed, &key);
+
+        let result = std::panic::catch_unwind(|| wx_decrypt(&ciphertext, &key, "wx-app"));
+
+        assert!(result.is_ok(), "malformed padding must not panic");
+        assert!(result.expect("no panic").is_err());
+    }
+
+    #[test]
+    fn decrypt_rejects_non_uniform_padding() {
+        let key = test_encoding_aes_key();
+        let mut malformed = raw_wechat_plaintext("hi", "wx-app");
+        let pad_len = *malformed.last().expect("padding") as usize;
+        let padding_start = malformed.len() - pad_len;
+        malformed[padding_start] ^= 1;
+        let ciphertext = encrypt_raw(&malformed, &key);
+
+        assert!(wx_decrypt(&ciphertext, &key, "wx-app").is_err());
+    }
+
+    #[test]
+    fn decrypt_rejects_mismatched_appid() {
+        let key = test_encoding_aes_key();
+        let ciphertext = wx_encrypt("hello", &key, "expected-app").expect("encrypt");
+
+        assert!(wx_decrypt(&ciphertext, &key, "different-app").is_err());
+    }
 }

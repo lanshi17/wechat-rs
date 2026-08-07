@@ -34,6 +34,20 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: wechat_test
+          POSTGRES_PASSWORD: wechat_test
+          POSTGRES_DB: wechat_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U wechat_test -d wechat_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
@@ -41,8 +55,13 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      - name: Install Redis test server
+        run: sudo apt-get update && sudo apt-get install --yes redis-server
+
       - name: Run tests
-        run: cargo test --verbose
+        env:
+          WECHAT_RS_TEST_DATABASE_URL: postgres://wechat_test:wechat_test@127.0.0.1:5432/wechat_test
+        run: cargo test --verbose -- --include-ignored --test-threads=1
 
   build:
     name: Build (release)

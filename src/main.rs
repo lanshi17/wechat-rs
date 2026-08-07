@@ -9,7 +9,7 @@ mod storage;
 mod wechat;
 
 use axum::{
-    extract::State,
+    extract::{MatchedPath, State},
     http::Request,
     middleware::{self, Next},
     response::{IntoResponse, Redirect, Response},
@@ -161,6 +161,28 @@ pub fn write_back_toml(path: &PathBuf, cfg: &AppConfig) -> Result<(), String> {
     fs::write(path, content).map_err(|e| format!("write {}: {e}", path.display()))
 }
 
+fn validate_admin_security(
+    secret: &str,
+    initial_password: &str,
+    stored_password_hash: &str,
+) -> Result<(), &'static str> {
+    let secret = secret.trim();
+    if secret.len() < 32
+        || matches!(
+            secret,
+            "change_me_jwt_secret" | "please_change_this_to_a_long_random_string"
+        )
+    {
+        return Err("admin.secret must be a unique random value of at least 32 bytes");
+    }
+
+    if stored_password_hash.is_empty() && matches!(initial_password.trim(), "" | "admin123") {
+        return Err("set a non-default admin.password before the first login");
+    }
+
+    Ok(())
+}
+
 // ── 应用状态 ──────────────────────────────────────────────────────────────────
 
 #[derive(Clone)]
@@ -194,6 +216,16 @@ pub struct PageParams {
     #[serde(default = "default_size")]
     pub size: i64,
 }
+
+impl PageParams {
+    pub fn normalized(self) -> Self {
+        Self {
+            page: self.page.clamp(1, 1_000_000),
+            size: self.size.clamp(1, 100),
+        }
+    }
+}
+
 fn default_page() -> i64 {
     1
 }
@@ -215,7 +247,7 @@ async fn metrics_middleware(
 ) -> Response {
     let mut guard = state.monitor.metrics().begin_request();
     let method = request.method().clone();
-    let uri = request.uri().clone();
+    let path = request.uri().path().to_string();
 
     let response = next.run(request).await;
 
@@ -225,7 +257,6 @@ async fn metrics_middleware(
         if status.is_server_error() {
             // 5xx 错误记录为 Error 事件
             let mon = state.monitor.clone();
-            let path = uri.path().to_string();
             tokio::spawn(async move {
                 mon.error_with_details(
                     "http",
@@ -283,10 +314,16 @@ async fn main() {
     let fc = load_file_config(&config_path);
 
     let addr = fc.server.listen_addr.clone();
-    let admin_secret = fc.admin.secret.clone();
+    let admin_secret = fc.admin.secret.trim().to_string();
     let admin_password = fc.admin.password.clone();
-    let wechat_server_token = fc.upstream.server_token.clone();
+    let wechat_server_token = fc.upstream.server_token.trim().to_string();
     let storage_type = fc.storage.storage_type.clone();
+
+    if wechat_server_token.is_empty() {
+        tracing::warn!(
+            "upstream.server_token is empty; /api/wechat/user and /users will reject requests"
+        );
+    }
 
     // ── 初始化通知分发器 ──────────────────────────────────────────────────────
     let notify_config = fc.notify.clone();
@@ -331,7 +368,7 @@ async fn main() {
             let store = storage::redis_store::RedisStorage::new(redis_url)
                 .await
                 .expect("failed to connect to redis");
-            info!("using Redis storage: {}", redis_url);
+            info!("using Redis storage");
             Arc::new(store)
         }
         _ => {
@@ -398,7 +435,52 @@ async fn main() {
             .await
             .ok();
 
-            info!("using PostgreSQL storage: {}", database_url);
+            sqlx::query(
+                r#"CREATE INDEX IF NOT EXISTS verification_codes_code_lookup
+                   ON verification_codes (code, created_at DESC, id DESC)"#,
+            )
+            .execute(&pool)
+            .await
+            .expect("migrate failed: verification_codes_code_lookup");
+
+            sqlx::query(
+                r#"
+                CREATE TABLE IF NOT EXISTS wechat_callback_claims (
+                    callback_key TEXT PRIMARY KEY,
+                    lease_id TEXT NOT NULL DEFAULT '',
+                    lease_expires_at TIMESTAMPTZ,
+                    expires_at TIMESTAMPTZ NOT NULL,
+                    completed BOOLEAN NOT NULL DEFAULT FALSE,
+                    reply TEXT,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            "#,
+            )
+            .execute(&pool)
+            .await
+            .expect("migrate failed: wechat_callback_claims");
+
+            sqlx::query(
+                r#"
+                ALTER TABLE wechat_callback_claims ADD COLUMN IF NOT EXISTS lease_id TEXT NOT NULL DEFAULT '';
+                ALTER TABLE wechat_callback_claims ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ;
+                ALTER TABLE wechat_callback_claims ADD COLUMN IF NOT EXISTS completed BOOLEAN NOT NULL DEFAULT FALSE;
+                ALTER TABLE wechat_callback_claims ADD COLUMN IF NOT EXISTS reply TEXT;
+            "#,
+            )
+            .execute(&pool)
+            .await
+            .ok();
+
+            sqlx::query(
+                r#"CREATE INDEX IF NOT EXISTS wechat_callback_claims_expiry
+                   ON wechat_callback_claims (expires_at)"#,
+            )
+            .execute(&pool)
+            .await
+            .expect("migrate failed: wechat_callback_claims_expiry");
+
+            info!("using PostgreSQL storage");
             Arc::new(storage::postgres::PgStorage::new(pool))
         }
     };
@@ -443,6 +525,12 @@ async fn main() {
     // Persist trimmed values back to DB
     if let Err(e) = save_config(&*db, &cfg).await {
         tracing::warn!("failed to persist trimmed config: {e}");
+    }
+
+    if let Err(message) =
+        validate_admin_security(&admin_secret, &admin_password, &cfg.admin_password_hash)
+    {
+        panic!("insecure admin configuration: {message}");
     }
 
     info!(
@@ -493,10 +581,62 @@ async fn main() {
             metrics_state,
             metrics_middleware,
         ))
-        .layer(tower_http::trace::TraceLayer::new_for_http())
-        .layer(tower_http::cors::CorsLayer::permissive());
+        .layer(
+            tower_http::trace::TraceLayer::new_for_http().make_span_with(|request: &Request<_>| {
+                let route = request
+                    .extensions()
+                    .get::<MatchedPath>()
+                    .map(MatchedPath::as_str)
+                    .unwrap_or("<unmatched>");
+                tracing::debug_span!(
+                    "http_request",
+                    method = %request.method(),
+                    route = route,
+                )
+            }),
+        );
 
     info!("listening on {addr}");
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{validate_admin_security, PageParams};
+
+    #[test]
+    fn pagination_is_clamped_to_safe_bounds() {
+        let low = PageParams { page: -5, size: 0 }.normalized();
+        assert_eq!((low.page, low.size), (1, 1));
+
+        let high = PageParams {
+            page: i64::MAX,
+            size: 10_000,
+        }
+        .normalized();
+        assert_eq!((high.page, high.size), (1_000_000, 100));
+    }
+
+    #[test]
+    fn insecure_admin_defaults_are_rejected_until_a_hash_exists() {
+        assert!(validate_admin_security(
+            "please_change_this_to_a_long_random_string",
+            "admin123",
+            ""
+        )
+        .is_err());
+        assert!(validate_admin_security(
+            "a-unique-admin-secret-that-is-at-least-32-bytes",
+            "admin123",
+            ""
+        )
+        .is_err());
+        assert!(validate_admin_security(
+            "a-unique-admin-secret-that-is-at-least-32-bytes",
+            "",
+            "$2b$12$stored-password-hash"
+        )
+        .is_ok());
+    }
 }

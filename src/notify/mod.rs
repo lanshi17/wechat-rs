@@ -106,6 +106,10 @@ impl fmt::Display for NotifyError {
 
 impl std::error::Error for NotifyError {}
 
+fn request_error(context: &str, error: reqwest::Error) -> NotifyError {
+    NotifyError::Network(format!("{context}: {}", error.without_url()))
+}
+
 // ── 通知配置 ──────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -170,17 +174,14 @@ impl NotifyDispatcher {
                 "sms" => {
                     if config.sms.enabled {
                         let n = sms::SmsNotifier::new(config.sms.clone())?;
-                        tracing::info!("notify: sms channel enabled (api={})", config.sms.api_url);
+                        tracing::info!("notify: sms channel enabled");
                         notifiers.push(Box::new(n));
                     }
                 }
                 "webhook" => {
                     if config.webhook.enabled {
                         let n = webhook::WebhookNotifier::new(config.webhook.clone())?;
-                        tracing::info!(
-                            "notify: webhook channel enabled (url={})",
-                            config.webhook.url
-                        );
+                        tracing::info!("notify: webhook channel enabled");
                         notifiers.push(Box::new(n));
                     }
                 }
@@ -234,5 +235,44 @@ impl NotifyDispatcher {
             Critical => 3,
         };
         order(level) >= order(self.min_level)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::request_error;
+
+    #[test]
+    fn request_errors_do_not_expose_sensitive_urls() {
+        let response: reqwest::Response = axum::http::Response::builder()
+            .status(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+            .body(String::new())
+            .expect("test response")
+            .into();
+        let error = response
+            .error_for_status()
+            .expect_err("500 response must produce an error")
+            .with_url(
+                reqwest::Url::parse(
+                    "https://hooks.example.invalid/send?access_token=top-secret-token",
+                )
+                .expect("test URL"),
+            );
+
+        let rendered = request_error("notification request failed", error).to_string();
+
+        assert!(rendered.contains("notification request failed"));
+        assert!(!rendered.contains("hooks.example.invalid"));
+        assert!(!rendered.contains("top-secret-token"));
+    }
+
+    #[test]
+    fn channel_startup_logs_do_not_reference_endpoint_values() {
+        let source = include_str!("mod.rs");
+        let sms_endpoint = ["config", "sms", "api_url"].join(".");
+        let webhook_endpoint = ["config", "webhook", "url"].join(".");
+
+        assert!(!source.contains(&sms_endpoint));
+        assert!(!source.contains(&webhook_endpoint));
     }
 }

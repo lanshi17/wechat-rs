@@ -11,6 +11,7 @@ use std::fmt;
 #[derive(Debug)]
 pub enum StorageError {
     Database(String),
+    Conflict(String),
     NotFound,
     Other(String),
 }
@@ -19,6 +20,7 @@ impl fmt::Display for StorageError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             StorageError::Database(s) => write!(f, "database error: {}", s),
+            StorageError::Conflict(s) => write!(f, "conflict: {}", s),
             StorageError::NotFound => write!(f, "not found"),
             StorageError::Other(s) => write!(f, "{}", s),
         }
@@ -50,6 +52,13 @@ pub struct CodeInfo {
     pub expires_at: Option<DateTime<Utc>>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CallbackClaim {
+    Acquired,
+    InProgress,
+    Completed(Option<String>),
+}
+
 // ── Trait ──────────────────────────────────────────────────────────────────────
 
 #[async_trait]
@@ -75,10 +84,33 @@ pub trait Storage: Send + Sync + 'static {
     async fn count_used_codes(&self) -> Result<i64, StorageError>;
     async fn count_expired_codes(&self) -> Result<i64, StorageError>;
     async fn get_user_codes(&self, openid: &str) -> Result<Vec<CodeInfo>, StorageError>;
-    async fn validate_code(
+    /// Atomically consumes the newest matching code when it is unused and has not expired.
+    /// Concurrent calls for the same code must yield at most one `Some(openid)` result.
+    /// A consumed value remains reserved until its original expiry to prevent a retry from
+    /// consuming a newly issued code that happens to use the same six digits.
+    async fn consume_code(
         &self,
         code: &str,
-    ) -> Result<Option<(String, bool, DateTime<Utc>)>, StorageError>;
+        now: DateTime<Utc>,
+    ) -> Result<Option<String>, StorageError>;
+
+    // WeChat callbacks
+    /// Acquires a short processing lease, reports another in-flight worker, or returns the
+    /// cached reply from a completed callback. Only one lease may be active for a key.
+    async fn begin_callback(
+        &self,
+        key: &str,
+        lease_id: &str,
+        lease_expires_at: DateTime<Utc>,
+    ) -> Result<CallbackClaim, StorageError>;
+    /// Completes a callback only when `lease_id` still owns it and caches its passive reply.
+    async fn complete_callback(
+        &self,
+        key: &str,
+        lease_id: &str,
+        reply: Option<&str>,
+        expires_at: DateTime<Utc>,
+    ) -> Result<(), StorageError>;
 
     // Config
     async fn load_config(&self) -> Result<Option<String>, StorageError>;
