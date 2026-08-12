@@ -166,5 +166,4 @@ railway variables set DATABASE_URL=postgres://user:pass@host:5432/dbname
 ## 📚 相关文档
 
 - [主 README](README.md)
-- [Vercel 前端部署](vercel/README.md)
 - [Railway 官方文档](https://docs.railway.app)

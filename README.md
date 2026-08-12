@@ -7,9 +7,6 @@
     <a href="https://github.com/lanshi17/wechat-rs/actions/workflows/rust.yml">
       <img src="https://github.com/lanshi17/wechat-rs/actions/workflows/rust.yml/badge.svg" alt="Build">
     </a>
-    <a href="https://vercel.com">
-      <img src="https://img.shields.io/badge/Vercel-ready-black?logo=vercel" alt="Vercel">
-    </a>
     <a href="https://hub.docker.com/r/davepaine/wechat-rs">
       <img src="https://img.shields.io/docker/pulls/davepaine/wechat-rs" alt="Docker Pulls">
     </a>
@@ -36,7 +33,6 @@ Building a WeChat Official Account backend usually means stitching together Pyth
 - 🛡️ **Production security built-in** — strict callback verification, JWT auth, bcrypt, and AES-encrypted messages
 - 🎛️ **Full admin dashboard** — real-time stats, user management, config sync, no extra tooling needed
 - 🔌 **Pluggable storage** — PostgreSQL or Redis, switch with a single config line
-- 🌐 **Vercel-ready** — deploy admin UI on Vercel with CDN acceleration (hybrid architecture)
 
 ## Quick Start
 
@@ -89,24 +85,6 @@ railway domain   # get your public URL
 
 See [RAILWAY.md](RAILWAY.md) for full documentation.
 
-### Vercel (hybrid deployment)
-
-Deploy the admin dashboard on Vercel with global CDN acceleration. The backend still runs on Docker/Railway/Render.
-
-```bash
-# 1. Deploy backend first (Railway example)
-railway init && railway add postgres
-railway variables set CONFIG_PATH=config.toml
-railway up
-
-# 2. Deploy frontend on Vercel
-./deploy-vercel.sh
-# or manually:
-cd vercel/ && npm install && vercel --prod
-```
-
-See [vercel/README.md](vercel/README.md) for full documentation.
-
 ## Features
 
 | Feature | Details |
@@ -117,7 +95,7 @@ See [vercel/README.md](vercel/README.md) for full documentation.
 | **Config Sync** | Edit WeChat credentials via UI — auto-synced to `config.toml` |
 | **Storage** | PostgreSQL and Redis backends via trait-based abstraction |
 | **Security** | Strict plaintext/AES callback signatures, AppID validation, JWT, fail-closed service tokens |
-| **Deployment** | Single binary, Docker image, Nginx proxy, or Vercel hybrid (CDN + backend) |
+| **Deployment** | Single binary, Docker image, Nginx proxy, or Docker-based PaaS (Railway/Render) |
 
 ## Architecture
 
@@ -137,18 +115,12 @@ src/
     ├── mod.rs           # Storage trait definition
     ├── postgres.rs      # PostgreSQL implementation
     └── redis_store.rs   # Redis implementation
-
-vercel/                  # Vercel frontend deployment (optional)
-├── app/                 # Next.js App Router
-├── public/admin.html    # Admin dashboard HTML
-└── vercel.json          # Vercel configuration
 ```
 
 **Storage backends** are interchangeable via the `Storage` trait. Both PostgreSQL and Redis enforce atomic, one-time code consumption; Redis uses a TTL lookup plus persistent audit records.
 
 **Deployment options:**
 - **Direct deployment**: Docker or binary on VPS/Railway/Render
-- **Hybrid deployment**: Admin UI on Vercel (CDN) + Backend on Railway/Render/VPS
 
 ## Configuration
 
@@ -342,41 +314,6 @@ ufw allow 80/tcp && ufw allow 443/tcp
 # Direct access (no proxy)
 ufw allow 3317/tcp
 ```
-
-### Vercel (Hybrid Deployment)
-
-Deploy the admin dashboard on Vercel with CDN acceleration while keeping the backend on Railway/Render/VPS.
-
-**Architecture:**
-```
-Vercel (前端) ──proxy──▶ Backend (Railway/Render/VPS)
-  ├─ Admin Dashboard         ├─ Rust Axum Server
-  ├─ CDN 加速                ├─ PostgreSQL/Redis
-  └─ API 代理                └─ 微信回调处理
-```
-
-**Quick Start:**
-
-```bash
-# 1. Deploy backend first (example: Railway)
-cd wechat-rs
-railway init
-railway add postgres
-railway variables set CONFIG_PATH=config.toml
-railway up
-railway domain  # Get backend URL
-
-# 2. Deploy frontend to Vercel
-cd vercel/
-npm install
-vercel env add BACKEND_URL production
-# Enter your backend URL from step 1
-vercel --prod
-```
-
-**Auto-deploy:** Once configured, the `Deploy Vercel Frontend` GitHub Action automatically redeploys the Vercel site whenever files under `vercel/` change on `master`. Required GitHub secrets: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`, `BACKEND_URL`.
-
-See [vercel/README.md](vercel/README.md) for detailed instructions.
 
 ## Development
 
