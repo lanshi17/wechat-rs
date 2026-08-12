@@ -311,7 +311,53 @@ async fn main() {
     let config_path =
         PathBuf::from(env::var("CONFIG_PATH").unwrap_or_else(|_| "config.toml".into()));
     info!("loading config from: {}", config_path.display());
-    let fc = load_file_config(&config_path);
+    let mut fc = load_file_config(&config_path);
+
+    // ── 环境变量覆盖（支持 Railway、Docker 等 PaaS 平台）────────────────────────
+    // PORT 环境变量（Railway/Docker 自动注入）
+    if let Ok(port) = env::var("PORT") {
+        fc.server.listen_addr = format!("0.0.0.0:{port}");
+        info!("PORT env override: listen_addr = {}", fc.server.listen_addr);
+    }
+    // DATABASE_URL 环境变量（Railway/Render 自动注入）
+    if let Ok(db_url) = env::var("DATABASE_URL") {
+        fc.storage.storage_type = "postgres".into();
+        fc.storage.database_url = db_url;
+        info!("DATABASE_URL env override: storage = postgres");
+    }
+    // REDIS_URL 环境变量
+    if let Ok(redis_url) = env::var("REDIS_URL") {
+        fc.storage.storage_type = "redis".into();
+        fc.storage.redis_url = redis_url;
+        info!("REDIS_URL env override: storage = redis");
+    }
+    // ADMIN_SECRET 环境变量
+    if let Ok(secret) = env::var("ADMIN_SECRET") {
+        fc.admin.secret = secret;
+        info!("ADMIN_SECRET env override applied");
+    }
+    // ADMIN_PASSWORD 环境变量
+    if let Ok(pw) = env::var("ADMIN_PASSWORD") {
+        fc.admin.password = pw;
+        info!("ADMIN_PASSWORD env override applied");
+    }
+    // WECHAT_TOKEN / WECHAT_APPID / WECHAT_APPSECRET / WECHAT_ENCODING_AES_KEY
+    if let Ok(v) = env::var("WECHAT_TOKEN") {
+        fc.wechat.token = v;
+    }
+    if let Ok(v) = env::var("WECHAT_APPID") {
+        fc.wechat.appid = v;
+    }
+    if let Ok(v) = env::var("WECHAT_APPSECRET") {
+        fc.wechat.appsecret = v;
+    }
+    if let Ok(v) = env::var("WECHAT_ENCODING_AES_KEY") {
+        fc.wechat.encoding_aes_key = v;
+    }
+    // UPSTREAM_SERVER_TOKEN 环境变量
+    if let Ok(v) = env::var("UPSTREAM_SERVER_TOKEN") {
+        fc.upstream.server_token = v;
+    }
 
     let addr = fc.server.listen_addr.clone();
     let admin_secret = fc.admin.secret.trim().to_string();

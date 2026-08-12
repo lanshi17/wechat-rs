@@ -150,6 +150,23 @@ vercel domains add admin.yourdomain.com
 vercel domains inspect admin.yourdomain.com
 ```
 
+## 🔄 CI/CD 自动部署
+
+项目配置了 GitHub Actions 工作流，当 `vercel/` 目录下的文件在 `master` 分支上变更时，会自动触发 Vercel 重新部署。
+
+### 配置 GitHub Secrets
+
+在 GitHub 仓库的 Settings → Secrets and variables → Actions 中添加：
+
+| Secret 名称 | 说明 | 获取方式 |
+|------------|------|---------|
+| `VERCEL_TOKEN` | Vercel API Token | [vercel.com/account/tokens](https://vercel.com/account/tokens) |
+| `VERCEL_ORG_ID` | 组织 ID | 在项目 `.vercel/project.json` 中查看 |
+| `VERCEL_PROJECT_ID` | 项目 ID | 在项目 `.vercel/project.json` 中查看 |
+| `BACKEND_URL` | 后端服务 URL | 你的 Rust 后端服务地址 |
+
+工作流位于 [`.github/workflows/vercel.yml`](../.github/workflows/vercel.yml)，版本号从 `Cargo.toml` 自动读取。
+
 ## 🔧 本地开发
 
 ```bash
