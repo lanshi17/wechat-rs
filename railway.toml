@@ -1,10 +1,10 @@
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "./Dockerfile"
+dockerfilePath = "Dockerfile"
 
 [deploy]
 startCommand = "wechat-rs"
-healthcheckPath = "/admin/health"
+healthcheckPath = "/api/monitor/status"
 healthcheckTimeout = 100
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
@@ -12,7 +12,7 @@ restartPolicyMaxRetries = 10
 [[services]]
 name = "wechat-rs"
 protocol = "HTTP"
-internalPort = 3000
+internalPort = 8080
 
 [services.networking]
 httpPort = true
