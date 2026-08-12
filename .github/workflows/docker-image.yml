@@ -18,13 +18,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Build release binary
-        run: cargo build --release --verbose
-
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
