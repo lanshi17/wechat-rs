@@ -7,6 +7,9 @@
     <a href="https://github.com/lanshi17/wechat-rs/actions/workflows/rust.yml">
       <img src="https://github.com/lanshi17/wechat-rs/actions/workflows/rust.yml/badge.svg" alt="Build">
     </a>
+    <a href="https://vercel.com">
+      <img src="https://img.shields.io/badge/Vercel-ready-black?logo=vercel" alt="Vercel">
+    </a>
     <a href="https://hub.docker.com/r/davepaine/wechat-rs">
       <img src="https://img.shields.io/docker/pulls/davepaine/wechat-rs" alt="Docker Pulls">
     </a>
@@ -33,8 +36,11 @@ Building a WeChat Official Account backend usually means stitching together Pyth
 - 🛡️ **Production security built-in** — strict callback verification, JWT auth, bcrypt, and AES-encrypted messages
 - 🎛️ **Full admin dashboard** — real-time stats, user management, config sync, no extra tooling needed
 - 🔌 **Pluggable storage** — PostgreSQL or Redis, switch with a single config line
+- 🌐 **Vercel-ready** — deploy admin UI on Vercel with CDN acceleration (hybrid architecture)
 
 ## Quick Start
+
+### Docker (recommended)
 
 ```bash
 # Clone and configure
@@ -55,6 +61,52 @@ That's it. PostgreSQL tables are created automatically on first startup.
 
 > **Required:** Replace the example admin password and JWT secret before first startup. The service refuses the known defaults (and secrets shorter than 32 bytes); the password is bcrypt-hashed on first login.
 
+### Railway (one-click backend)
+
+Railway automatically injects `PORT` and `DATABASE_URL` — wechat-rs reads them at startup, so no `config.toml` is needed.
+
+```bash
+# Install Railway CLI
+npm install -g @railway/cli
+railway login
+
+# Initialize project and add PostgreSQL
+railway init
+railway add   # choose "Database" → "PostgreSQL"
+
+# Configure via environment variables
+railway variables set ADMIN_PASSWORD=your_password
+railway variables set ADMIN_SECRET=$(openssl rand -base64 48)
+railway variables set WECHAT_TOKEN=your_token
+railway variables set WECHAT_APPID=wx...
+railway variables set WECHAT_APPSECRET=...
+railway variables set WECHAT_ENCODING_AES_KEY=...
+
+# Deploy
+railway up
+railway domain   # get your public URL
+```
+
+See [RAILWAY.md](RAILWAY.md) for full documentation.
+
+### Vercel (hybrid deployment)
+
+Deploy the admin dashboard on Vercel with global CDN acceleration. The backend still runs on Docker/Railway/Render.
+
+```bash
+# 1. Deploy backend first (Railway example)
+railway init && railway add postgres
+railway variables set CONFIG_PATH=config.toml
+railway up
+
+# 2. Deploy frontend on Vercel
+./deploy-vercel.sh
+# or manually:
+cd vercel/ && npm install && vercel --prod
+```
+
+See [vercel/README.md](vercel/README.md) for full documentation.
+
 ## Features
 
 | Feature | Details |
@@ -65,7 +117,7 @@ That's it. PostgreSQL tables are created automatically on first startup.
 | **Config Sync** | Edit WeChat credentials via UI — auto-synced to `config.toml` |
 | **Storage** | PostgreSQL and Redis backends via trait-based abstraction |
 | **Security** | Strict plaintext/AES callback signatures, AppID validation, JWT, fail-closed service tokens |
-| **Deployment** | Single binary or Docker image, Nginx reverse proxy ready |
+| **Deployment** | Single binary, Docker image, Nginx proxy, or Vercel hybrid (CDN + backend) |
 
 ## Architecture
 
@@ -128,6 +180,24 @@ database_url = "postgres://user:password@host:5432/dbname"
 ```
 
 Config path defaults to `./config.toml`. Override with `CONFIG_PATH` env var.
+
+### Environment Variable Overrides
+
+For PaaS deployments (Railway, Render, Docker), config values can be set via environment variables instead of `config.toml`. Env vars take precedence over the config file:
+
+| Env Var | Config Path |
+|---------|-------------|
+| `PORT` | `server.listen_addr` (binds to `0.0.0.0:$PORT`) |
+| `DATABASE_URL` | `storage.database_url` (auto-sets `storage.type = "postgres"`) |
+| `REDIS_URL` | `storage.redis_url` (auto-sets `storage.type = "redis"`) |
+| `ADMIN_SECRET` | `admin.secret` |
+| `ADMIN_PASSWORD` | `admin.password` |
+| `WECHAT_TOKEN` | `wechat.token` |
+| `WECHAT_APPID` | `wechat.appid` |
+| `WECHAT_APPSECRET` | `wechat.appsecret` |
+| `WECHAT_ENCODING_AES_KEY` | `wechat.encoding_aes_key` |
+| `UPSTREAM_SERVER_TOKEN` | `upstream.server_token` |
+| `CONFIG_PATH` | Path to the TOML config file |
 
 ### Admin UI Sync
 
@@ -303,6 +373,8 @@ vercel env add BACKEND_URL production
 # Enter your backend URL from step 1
 vercel --prod
 ```
+
+**Auto-deploy:** Once configured, the `Deploy Vercel Frontend` GitHub Action automatically redeploys the Vercel site whenever files under `vercel/` change on `master`. Required GitHub secrets: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`, `BACKEND_URL`.
 
 See [vercel/README.md](vercel/README.md) for detailed instructions.
 

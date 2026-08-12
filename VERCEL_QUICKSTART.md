@@ -18,6 +18,12 @@
 - `deploy-vercel.sh` - 自动化部署脚本
 - `extract-admin-html.sh` - HTML 提取脚本（同步 Rust 代码变更）
 
+### CI/CD
+- `.github/workflows/vercel.yml` - GitHub Actions 自动部署工作流
+  - 触发：`vercel/` 目录在 `master` 分支上变更时
+  - Secrets：`VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`, `BACKEND_URL`
+  - 自动读取 `Cargo.toml` 版本号
+
 ### 文档
 - `VERCEL_ADAPTATION.md` - 技术分析（为什么不能直接部署）
 - `VERCEL_SUMMARY.md` - 完整工作总结
