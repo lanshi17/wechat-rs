@@ -85,9 +85,18 @@ src/
     ├── mod.rs           # Storage trait definition
     ├── postgres.rs      # PostgreSQL implementation
     └── redis_store.rs   # Redis implementation
+
+vercel/                  # Vercel frontend deployment (optional)
+├── app/                 # Next.js App Router
+├── public/admin.html    # Admin dashboard HTML
+└── vercel.json          # Vercel configuration
 ```
 
 **Storage backends** are interchangeable via the `Storage` trait. Both PostgreSQL and Redis enforce atomic, one-time code consumption; Redis uses a TTL lookup plus persistent audit records.
+
+**Deployment options:**
+- **Direct deployment**: Docker or binary on VPS/Railway/Render
+- **Hybrid deployment**: Admin UI on Vercel (CDN) + Backend on Railway/Render/VPS
 
 ## Configuration
 
@@ -263,6 +272,39 @@ ufw allow 80/tcp && ufw allow 443/tcp
 # Direct access (no proxy)
 ufw allow 3317/tcp
 ```
+
+### Vercel (Hybrid Deployment)
+
+Deploy the admin dashboard on Vercel with CDN acceleration while keeping the backend on Railway/Render/VPS.
+
+**Architecture:**
+```
+Vercel (前端) ──proxy──▶ Backend (Railway/Render/VPS)
+  ├─ Admin Dashboard         ├─ Rust Axum Server
+  ├─ CDN 加速                ├─ PostgreSQL/Redis
+  └─ API 代理                └─ 微信回调处理
+```
+
+**Quick Start:**
+
+```bash
+# 1. Deploy backend first (example: Railway)
+cd wechat-rs
+railway init
+railway add postgres
+railway variables set CONFIG_PATH=config.toml
+railway up
+railway domain  # Get backend URL
+
+# 2. Deploy frontend to Vercel
+cd vercel/
+npm install
+vercel env add BACKEND_URL production
+# Enter your backend URL from step 1
+vercel --prod
+```
+
+See [vercel/README.md](vercel/README.md) for detailed instructions.
 
 ## Development
 
