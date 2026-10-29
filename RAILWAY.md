@@ -117,10 +117,11 @@ Railway 免费套餐包含：
 ## 🔍 验证部署
 
 ```bash
-# 检查健康状态
-curl https://your-railway-domain.up.railway.app/admin/health
+# 检查健康状态（公开端点，无需鉴权）
+curl https://your-railway-domain.up.railway.app/api/monitor/status
 
-# 应该返回 JSON 包含 uptime_seconds、memory_used_mb 等字段
+# 应该返回 JSON 包含 status: "ok"、uptime_secs、system 等字段
+# （/admin/health 需要管理员鉴权，仅用于登录后的管理后台）
 ```
 
 ## 🆕 更新部署
@@ -165,5 +166,4 @@ railway variables set DATABASE_URL=postgres://user:pass@host:5432/dbname
 ## 📚 相关文档
 
 - [主 README](README.md)
-- [Vercel 前端部署](vercel/README.md)
 - [Railway 官方文档](https://docs.railway.app)

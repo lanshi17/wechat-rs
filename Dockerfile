@@ -1,31 +1,37 @@
 # ── 构建阶段 ─────────────────────────────────────────────────────────────────
-FROM rust:1.84-bookworm AS builder
+# 用 1-bookworm 跟踪最新 Rust 1.x，避免 Cargo.lock 中依赖的 MSRV 超过工具链版本
+FROM rust:1-bookworm AS builder
 
 WORKDIR /build
 
-# 先复制依赖文件，利用 Docker 缓存
+# ring 等 crate 需要 C 编译器（官方 rust 镜像自带 gcc），pkg-config 以备不时之需
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends pkg-config ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+# 先复制依赖描述，利用 Docker 层缓存
 COPY Cargo.toml Cargo.lock ./
-RUN cargo fetch --locked
-
-# 复制源代码
 COPY src/ src/
+ENV CARGO_INCREMENTAL=0 CARGO_NET_RETRY=10 CARGO_BUILD_JOBS=2 CARGO_PROFILE_RELEASE_LTO=off
 
-# 构建 release 版本
-RUN cargo build --release --locked && \
-    strip target/release/wechat-rs
+# --locked：严格按 Cargo.lock 构建，保证可复现，避免静默升级依赖。
+# JOBS=2 + 关闭 LTO：把构建内存峰值压低（并行 rustc + LTO 链接是 OOM 重灾区，
+# 小内存构建机上构建进程被杀时 Railway 只显示笼统的 build 失败）；二进制稍大，无功能影响。
+RUN cargo build --release --locked
 
 # ── 运行阶段 ─────────────────────────────────────────────────────────────────
 FROM debian:bookworm-slim
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ca-certificates && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* && \
+    mkdir -p /etc/wechat-rs
 
 COPY --from=builder /build/target/release/wechat-rs /usr/local/bin/wechat-rs
 
-EXPOSE 3000
+# 实际监听端口由 $PORT 环境变量决定（Railway 自动注入，代码已支持覆盖），此处仅为文档声明
+EXPOSE 8080
 
-# Railway/Docker 会通过 PORT 环境变量注入端口
 ENV CONFIG_PATH=/etc/wechat-rs/config.toml
 
-CMD ["wechat-rs"]
+CMD ["/usr/local/bin/wechat-rs"]
