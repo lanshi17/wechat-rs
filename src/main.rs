@@ -156,7 +156,12 @@ pub fn write_back_toml(path: &PathBuf, cfg: &AppConfig) -> Result<(), String> {
     file_cfg.wechat.appid = cfg.wechat_appid.clone();
     file_cfg.wechat.appsecret = cfg.wechat_appsecret.clone();
     file_cfg.wechat.encoding_aes_key = cfg.wechat_encoding_aes_key.clone();
-
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("create dir {}: {e}", parent.display()))?;
+        }
+    }
     let content = toml::to_string_pretty(&file_cfg).map_err(|e| format!("serialize toml: {e}"))?;
     fs::write(path, content).map_err(|e| format!("write {}: {e}", path.display()))
 }
